@@ -15,7 +15,7 @@ export default function Index() {
   }
 
   if (session) {
-    return <Redirect href="/(tabs)" />;
+    return <Redirect href="/(tabs)/crew" />;
   }
 
   return <Redirect href="/(auth)" />;

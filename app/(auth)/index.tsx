@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert, Image, ActivityIndicator } from 'react-native';
 import { useSession } from '../../store/authStore';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +22,7 @@ export default function SignIn() {
     setLoading(true);
     try {
       await signIn(username, password);
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/crew');
     } catch (error) {
       Alert.alert('Error', 'Credenciales inválidas');
     } finally {
@@ -36,16 +36,20 @@ export default function SignIn() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <LinearGradient
-        colors={['#FFFFFF', colors.secondary]}
+        colors={[colors.primary, '#0A1338']}
         style={styles.background}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
       />
       
       <View style={styles.content}>
-        <Image 
-          source={require('../../assets/tocumen-fondo-azul.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+        <View style={styles.logoContainer}>
+          <Image 
+            source={require('../../assets/tocumen-fondo-blanco.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
         <Text style={styles.subtitle}>Sistema de Gestión de Tripulación</Text>
         
         <View style={styles.form}>
@@ -91,14 +95,16 @@ export default function SignIn() {
             disabled={loading}
           >
             <LinearGradient
-              colors={[colors.primary, colors.quaternary]}
+              colors={[colors.tertiary, colors.primary]}
               style={styles.buttonGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Text style={styles.buttonText}>
-                {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.buttonText}>Iniciar Sesión</Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -110,7 +116,6 @@ export default function SignIn() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
   },
   background: {
     position: 'absolute',
@@ -125,17 +130,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     alignItems: 'center',
   },
+  logoContainer: {
+    width: 220,
+    height: 120,
+    backgroundColor: 'white',
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+    marginBottom: 30,
+  },
   logo: {
-    width: 200,
-    height: 100,
-    marginBottom: 20,
+    width: 180,
+    height: 90,
   },
   subtitle: {
-    fontSize: 16,
-    color: colors.quaternary,
+    fontSize: 18,
+    color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: 40,
     fontWeight: '500',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   form: {
     width: '100%',
