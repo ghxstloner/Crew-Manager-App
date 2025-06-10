@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { colors } from '../../constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,36 +29,32 @@ export default function TabsLayout() {
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.1,
           shadowRadius: 4,
-          height: 60 + insets.bottom,
+          height: 65 + insets.bottom,
           paddingBottom: insets.bottom,
+          paddingTop: 10,
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.gray[400],
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: '500',
-          marginTop: -5,
+          fontWeight: '600',
+          marginTop: 5,
         },
         tabBarItemStyle: {
-          paddingTop: 5,
+          paddingTop: 0,
+          height: 55,
         },
         headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
-        name="crew"
+        name="index"
         options={{
-          title: 'Inicio',
+          title: 'Tripulantes',
           headerTitle: 'Mis Tripulantes',
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={{ 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              backgroundColor: focused ? colors.primary + '15' : 'transparent',
-              padding: 5,
-              borderRadius: 10,
-            }}>
-              <Ionicons name={focused ? "home" : "home-outline"} size={size} color={color} />
+            <View style={styles.tabIconContainer}>
+              <Ionicons name={focused ? "people" : "people-outline"} size={24} color={color} />
             </View>
           ),
         }}
@@ -69,14 +65,8 @@ export default function TabsLayout() {
           title: 'Enrolar',
           headerTitle: 'Enrolar Tripulante',
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={{ 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              backgroundColor: focused ? colors.primary + '15' : 'transparent',
-              padding: 5,
-              borderRadius: 10,
-            }}>
-              <Ionicons name={focused ? "person-add" : "person-add-outline"} size={size} color={color} />
+            <View style={styles.tabIconContainer}>
+              <Ionicons name={focused ? "person-add" : "person-add-outline"} size={24} color={color} />
             </View>
           ),
         }}
@@ -87,14 +77,8 @@ export default function TabsLayout() {
           title: 'Perfil',
           headerTitle: 'Mi Perfil',
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={{ 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              backgroundColor: focused ? colors.primary + '15' : 'transparent',
-              padding: 5,
-              borderRadius: 10,
-            }}>
-              <Ionicons name={focused ? "person" : "person-outline"} size={size} color={color} />
+            <View style={styles.tabIconContainer}>
+              <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
             </View>
           ),
         }}
@@ -102,3 +86,13 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 50,
+    height: 30,
+    marginTop: 5,
+  }
+});

@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/tocumen-fondo-blanco.png",
       "resizeMode": "contain",
       "backgroundColor": "#001689"
     },
@@ -20,7 +20,10 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#001689"
       },
-      "package": "com.crewmanager.app"
+      "package": "com.crewmanager.app",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -37,6 +40,12 @@
         }
       ]
     ],
-    "scheme": "crewmanager"
+    "scheme": "crewmanager",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6f832623-6037-41ab-9d29-8de8123f18e0"
+      }
+    }
   }
 }

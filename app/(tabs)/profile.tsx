@@ -1,13 +1,15 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../../store/authStore';
+import { useNetwork } from '../../store/networkStore';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function Profile() {
-  const { signOut, session } = useSession();
+  const { signOut, user } = useSession();
+  const { isConnected } = useNetwork();
 
   const handleSignOut = () => {
     Alert.alert(
@@ -37,10 +39,21 @@ export default function Profile() {
           end={{ x: 0, y: 1 }}
         >
           <View style={styles.profileHeader}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{session?.charAt(0) || 'U'}</Text>
+            <View style={styles.avatarContainer}>
+              {user?.aerolinea?.logo_base64 ? (
+                <Image 
+                  source={{ uri: `data:image/png;base64,${user.aerolinea.logo_base64}` }}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{user?.name?.charAt(0) || 'U'}</Text>
+                </View>
+              )}
             </View>
-            <Text style={styles.username}>{session || 'Usuario'}</Text>
+            <Text style={styles.username}>{user?.name || 'Usuario'}</Text>
+            <Text style={styles.email}>{user?.email || ''}</Text>
             <View style={styles.roleContainer}>
               <Ionicons name="shield-checkmark" size={14} color={colors.white} style={styles.roleIcon} />
               <Text style={styles.role}>Administrador</Text>
@@ -49,16 +62,47 @@ export default function Profile() {
         </LinearGradient>
 
         <View style={styles.content}>
+          {/* Información de la aerolínea */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Información</Text>
+            <Text style={styles.sectionTitle}>Aerolínea</Text>
             <View style={styles.infoCard}>
               <View style={styles.infoItem}>
                 <View style={styles.infoIconContainer}>
-                  <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+                  <Ionicons name="airplane" size={22} color={colors.primary} />
                 </View>
                 <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Estado</Text>
-                  <Text style={styles.infoValue}>Activo</Text>
+                  <Text style={styles.infoLabel}>Compañía</Text>
+                  <Text style={styles.infoValue}>{user?.aerolinea?.descripcion || 'N/A'}</Text>
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.infoItem}>
+                <View style={styles.infoIconContainer}>
+                  <Ionicons name="person-circle" size={22} color={colors.success} />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Usuario</Text>
+                  <Text style={styles.infoValue}>{user?.login || 'N/A'}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Estado del sistema */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Estado del Sistema</Text>
+            <View style={styles.infoCard}>
+              <View style={styles.infoItem}>
+                <View style={styles.infoIconContainer}>
+                  {isConnected ? (
+                    <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+                  ) : (
+                    <Ionicons name="close-circle" size={22} color={colors.danger} />
+                  )}
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Conexión</Text>
+                  <Text style={styles.infoValue}>{isConnected ? 'Conectado' : 'Desconectado'}</Text>
                 </View>
               </View>
               <View style={styles.divider} />
@@ -68,29 +112,28 @@ export default function Profile() {
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={styles.infoLabel}>Última sincronización</Text>
-                  <Text style={styles.infoValue}>Hace 5 minutos</Text>
+                  <Text style={styles.infoValue}>Hace 2 minutos</Text>
                 </View>
               </View>
             </View>
           </View>
 
+          {/* Mensaje inspirador */}
+          <View style={styles.messageCard}>
+            <Ionicons name="information-circle" size={24} color={colors.primary} style={styles.messageIcon} />
+            <Text style={styles.messageTitle}>Gestión de Tripulación Eficiente</Text>
+            <Text style={styles.messageText}>
+              "Un equipo de tripulación bien gestionado es fundamental para una operación aérea segura y eficiente. CrewManager te permite optimizar recursos, cumplir normativas y ofrecer la mejor experiencia a tus pasajeros."
+            </Text>
+          </View>
+
+          {/* Acciones */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Acciones</Text>
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="cloud-upload" size={22} color={colors.primary} style={styles.actionIcon} />
-              <Text style={styles.actionText}>Sincronizar datos</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="settings" size={22} color={colors.primary} style={styles.actionIcon} />
-              <Text style={styles.actionText}>Configuración</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
-            </TouchableOpacity>
             
             <TouchableOpacity style={styles.actionButton}>
               <Ionicons name="help-circle" size={22} color={colors.primary} style={styles.actionIcon} />
-              <Text style={styles.actionText}>Ayuda</Text>
+              <Text style={styles.actionText}>Ayuda y soporte</Text>
               <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
             </TouchableOpacity>
           </View>
@@ -102,6 +145,12 @@ export default function Profile() {
             <Ionicons name="log-out" size={20} color={colors.white} style={styles.signOutIcon} />
             <Text style={styles.signOutButtonText}>Cerrar Sesión</Text>
           </TouchableOpacity>
+
+          {/* Información de la versión */}
+          <View style={styles.versionContainer}>
+            <Text style={styles.versionText}>CrewManager v1.0.0</Text>
+            <Text style={styles.versionSubtext}>© 2025 - Todos los derechos reservados</Text>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -123,6 +172,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
+  avatarContainer: {
+    marginBottom: 15,
+  },
   avatar: {
     width: 100,
     height: 100,
@@ -130,7 +182,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+  },
+  logoImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.white,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -141,53 +206,60 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   avatarText: {
-    color: colors.primary,
-    fontSize: 40,
+    fontSize: 42,
     fontWeight: 'bold',
+    color: colors.primary,
   },
   username: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.white,
-    marginBottom: 8,
+    marginBottom: 5,
+  },
+  email: {
+    fontSize: 14,
+    color: colors.white,
+    opacity: 0.8,
+    marginBottom: 10,
   },
   roleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
   roleIcon: {
-    marginRight: 6,
+    marginRight: 5,
   },
   role: {
-    fontSize: 14,
-    fontWeight: '600',
     color: colors.white,
+    fontWeight: '600',
+    fontSize: 12,
   },
   content: {
-    flex: 1,
     padding: 20,
-    marginTop: -20,
+    paddingTop: 30,
   },
   section: {
-    marginBottom: 25,
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.dark,
-    marginBottom: 15,
-    paddingLeft: 5,
+    marginBottom: 12,
   },
   infoCard: {
     backgroundColor: colors.white,
-    borderRadius: 15,
-    padding: 20,
+    borderRadius: 16,
+    padding: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.05,
     shadowRadius: 3.84,
     elevation: 2,
@@ -195,73 +267,117 @@ const styles = StyleSheet.create({
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 8,
   },
   infoIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F5F7FA',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.light,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: 12,
   },
   infoContent: {
     flex: 1,
   },
   infoLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: colors.gray[500],
-    marginBottom: 2,
+    marginBottom: 4,
   },
   infoValue: {
     fontSize: 16,
+    fontWeight: '600',
     color: colors.dark,
-    fontWeight: 'bold',
   },
   divider: {
     height: 1,
     backgroundColor: colors.gray[200],
-    marginVertical: 10,
+    marginVertical: 12,
+  },
+  messageCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3.84,
+    elevation: 2,
+  },
+  messageIcon: {
+    marginBottom: 10,
+  },
+  messageTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.dark,
+    marginBottom: 10,
+  },
+  messageText: {
+    fontSize: 14,
+    color: colors.gray[700],
+    lineHeight: 22,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
     padding: 16,
-    borderRadius: 15,
-    marginBottom: 10,
+    borderRadius: 16,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.05,
-    shadowRadius: 2.22,
-    elevation: 1,
+    shadowRadius: 3.84,
+    elevation: 2,
   },
   actionIcon: {
-    marginRight: 15,
+    marginRight: 16,
   },
   actionText: {
     flex: 1,
     fontSize: 16,
+    fontWeight: '500',
     color: colors.dark,
   },
   signOutButton: {
     flexDirection: 'row',
-    backgroundColor: colors.danger,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
-    marginBottom: 30,
+    backgroundColor: colors.danger,
+    paddingVertical: 15,
+    borderRadius: 12,
+    marginVertical: 10,
   },
   signOutIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   signOutButtonText: {
     color: colors.white,
-    fontSize: 18,
     fontWeight: 'bold',
+    fontSize: 16,
+  },
+  versionContainer: {
+    alignItems: 'center',
+    marginTop: 30,
+    marginBottom: 20,
+  },
+  versionText: {
+    fontSize: 14,
+    color: colors.gray[500],
+    marginBottom: 5,
+  },
+  versionSubtext: {
+    fontSize: 12,
+    color: colors.gray[400],
   },
 });

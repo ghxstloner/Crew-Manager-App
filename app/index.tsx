@@ -4,7 +4,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { colors } from '../constants/colors';
 
 export default function Index() {
-  const { session, isLoading } = useSession();
+  const { user, isLoading } = useSession();
 
   if (isLoading) {
     return (
@@ -14,8 +14,8 @@ export default function Index() {
     );
   }
 
-  if (session) {
-    return <Redirect href="/(tabs)/crew" />;
+  if (user) {
+    return <Redirect href="/(tabs)" />;
   }
 
   return <Redirect href="/(auth)" />;
