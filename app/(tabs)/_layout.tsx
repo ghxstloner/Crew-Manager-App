@@ -50,27 +50,16 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tripulantes',
-          headerTitle: 'Mis Tripulantes',
+          title: 'Planificaciones',
+          headerTitle: 'Mis Planificaciones',
           tabBarIcon: ({ color, size, focused }) => (
             <View style={styles.tabIconContainer}>
-              <Ionicons name={focused ? "people" : "people-outline"} size={24} color={color} />
+              <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
             </View>
           ),
         }}
       />
-      <Tabs.Screen
-        name="enroll"
-        options={{
-          title: 'Enrolar',
-          headerTitle: 'Enrolar Tripulante',
-          tabBarIcon: ({ color, size, focused }) => (
-            <View style={styles.tabIconContainer}>
-              <Ionicons name={focused ? "person-add" : "person-add-outline"} size={24} color={color} />
-            </View>
-          ),
-        }}
-      />
+      
       <Tabs.Screen
         name="profile"
         options={{

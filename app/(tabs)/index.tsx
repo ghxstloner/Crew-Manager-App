@@ -1,141 +1,200 @@
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, TextInput, Image, RefreshControl, Animated, Alert } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  View, Text, StyleSheet, RefreshControl, TouchableOpacity, 
+  TextInput, ActivityIndicator, Animated, Alert, FlatList 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useCrew } from '../../store/crewStore';
-import { useNetwork } from '../../store/networkStore';
-import { Tripulante } from '../../services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { useSession } from '../../store/authStore';
+import { useNetwork } from '../../store/networkStore';
+import { apiService, Planificacion } from '../../services/api';
 
-export default function CrewList() {
-  const { tripulantes, loading, loadTripulantes } = useCrew();
+export default function PlanificacionesList() {
+  const { user } = useSession();
   const { isConnected } = useNetwork();
-  const [search, setSearch] = useState('');
+  
+  const [planificaciones, setPlanificaciones] = useState<Planificacion[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    loadInitialData();
+    loadPlanificaciones();
   }, []);
 
-  const loadInitialData = async () => {
-    try {
-      await loadTripulantes();
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Error al cargar tripulantes');
+  const loadPlanificaciones = async (searchTerm?: string, pageNum: number = 1, showLoader: boolean = true) => {
+    if (!isConnected && pageNum === 1) {
+      Alert.alert('Sin conexión', 'No se pueden cargar las planificaciones sin conexión a internet');
+      setLoading(false);
+      return;
     }
-  };
 
-  const handleSearch = async (text: string) => {
-    setSearch(text);
-    try {
-      await loadTripulantes(1, text || undefined);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Error en la búsqueda');
+    if (showLoader && pageNum === 1) {
+      setLoading(true);
     }
-  };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
     try {
-      await loadTripulantes(1, search || undefined);
+      const response = await apiService.getPlanificaciones(pageNum, searchTerm);
+      
+      if (response.success) {
+        if (pageNum === 1) {
+          setPlanificaciones(response.data);
+        } else {
+          setPlanificaciones(prev => [...prev, ...response.data]);
+        }
+        
+        // Check if there are more pages
+        const pagination = response.pagination;
+        setHasMore(pagination ? pagination.current_page < pagination.last_page : false);
+        setPage(pageNum);
+      }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Error al actualizar');
+      console.error('Error loading planificaciones:', error);
+      Alert.alert('Error', 'No se pudieron cargar las planificaciones');
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const handleCardPress = (tripulante: Tripulante) => {
-    Alert.alert(
-      `${tripulante.nombres_apellidos}`,
-      `ID: ${tripulante.crew_id}\nPosición: ${tripulante.posicion_info.descripcion}\nPasaporte: ${tripulante.pasaporte}${tripulante.identidad ? '\nDoc: ' + tripulante.identidad : ''}`,
-      [
-        { text: 'Cerrar', style: 'cancel' }
-      ]
-    );
+  const onRefresh = () => {
+    setRefreshing(true);
+    setPage(1);
+    setHasMore(true);
+    loadPlanificaciones(search, 1, false);
   };
 
-  const renderTripulante = ({ item, index }: { item: Tripulante, index: number }) => {
-    const scale = scrollY.interpolate({
-      inputRange: [-1, 0, 100 * index, 100 * (index + 2)],
-      outputRange: [1, 1, 1, 0.9],
-      extrapolate: 'clamp'
-    });
+  const handleSearch = (text: string) => {
+    setSearch(text);
+    setPage(1);
+    setHasMore(true);
+    loadPlanificaciones(text, 1, false);
+  };
 
-    console.log('Imagen URL:', item.imagen_url);
-    
-    const opacity = scrollY.interpolate({
-      inputRange: [-1, 0, 100 * index, 100 * (index + 1)],
-      outputRange: [1, 1, 1, 0.5],
-      extrapolate: 'clamp'
+  const loadMore = () => {
+    if (!loading && hasMore && isConnected) {
+      loadPlanificaciones(search, page + 1, false);
+    }
+  };
+
+  const getStatusColor = (estado: string) => {
+    switch (estado.toLowerCase()) {
+      case 'confirmado':
+        return colors.success;
+      case 'pendiente':
+        return colors.warning;
+      case 'cancelado':
+        return colors.danger;
+      default:
+        return colors.gray[500];
+    }
+  };
+
+  const getStatusIcon = (estado: string) => {
+    switch (estado.toLowerCase()) {
+      case 'confirmado':
+        return 'checkmark-circle';
+      case 'pendiente':
+        return 'time';
+      case 'cancelado':
+        return 'close-circle';
+      default:
+        return 'help-circle';
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
     });
+  };
+
+  const formatTime = (timeString: string) => {
+    if (!timeString) return '--:--';
+    return timeString.substring(0, 5); // HH:MM format
+  };
+
+  const renderPlanificacion = ({ item }: { item: Planificacion }) => {
+    const statusColor = getStatusColor(item.estado);
+    const statusIcon = getStatusIcon(item.estado);
 
     return (
-      <Animated.View
-        style={[
-          styles.cardContainer,
-          {
-            opacity,
-            transform: [{ scale }],
-          }
-        ]}
+      <TouchableOpacity 
+        style={styles.cardContainer}
+        onPress={() => {
+          // TODO: Navigate to planificacion details
+          Alert.alert('Planificación', `Vuelo ${item.numero_vuelo}\n${item.origen} → ${item.destino}`);
+        }}
+        activeOpacity={0.7}
       >
-        <TouchableOpacity 
-          style={styles.card}
-          onPress={() => handleCardPress(item)}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={[colors.white, '#F8F9FA']}
-            style={styles.cardGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-          >
-            <View style={styles.cardContent}>
-              {item.imagen_url ? (
-                <Image source={{ uri: item.imagen_url }} style={styles.photo} />
-              ) : (
-                <View style={styles.photoPlaceholder}>
-                  <Text style={styles.photoPlaceholderText}>
-                    {item.nombres.charAt(0)}{item.apellidos.charAt(0)}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.info}>
-                <Text style={styles.name}>{item.nombres_apellidos}</Text>
-                <View style={styles.detailRow}>
-                  <Ionicons name="id-card-outline" size={14} color={colors.gray[500]} style={styles.detailIcon} />
-                  <Text style={styles.detail}>ID: {item.crew_id}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Ionicons name="briefcase-outline" size={14} color={colors.gray[500]} style={styles.detailIcon} />
-                  <Text style={styles.detail}>Posición: {item.posicion_info.descripcion}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Ionicons name="document-outline" size={14} color={colors.gray[500]} style={styles.detailIcon} />
-                  <Text style={styles.detail}>Pasaporte: {item.pasaporte}</Text>
-                </View>
-                {item.identidad && (
-                  <View style={styles.detailRow}>
-                    <Ionicons name="card-outline" size={14} color={colors.gray[500]} style={styles.detailIcon} />
-                    <Text style={styles.detail}>Doc: {item.identidad}</Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.actionContainer}>
-                <TouchableOpacity style={styles.actionButton}>
-                  <Ionicons name="ellipsis-vertical" size={18} color={colors.gray[500]} />
-                </TouchableOpacity>
-              </View>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.flightInfo}>
+              <Text style={styles.flightNumber}>{item.numero_vuelo}</Text>
+              <Text style={styles.aircraft}>{item.aeronave}</Text>
             </View>
-          </LinearGradient>
-        </TouchableOpacity>
-      </Animated.View>
+            <View style={[styles.statusContainer, { backgroundColor: statusColor }]}>
+              <Ionicons name={statusIcon} size={14} color="#FFFFFF" />
+              <Text style={styles.statusText}>{item.estado}</Text>
+            </View>
+          </View>
+
+          <View style={styles.routeContainer}>
+            <View style={styles.cityContainer}>
+              <Text style={styles.cityCode}>{item.origen}</Text>
+              <Text style={styles.timeText}>{formatTime(item.hora_salida)}</Text>
+            </View>
+            
+            <View style={styles.routeCenter}>
+              <Ionicons name="airplane" size={20} color={colors.primary} />
+              <View style={styles.routeLine} />
+            </View>
+            
+            <View style={styles.cityContainer}>
+              <Text style={styles.cityCode}>{item.destino}</Text>
+              <Text style={styles.timeText}>{formatTime(item.hora_llegada)}</Text>
+            </View>
+          </View>
+
+          <View style={styles.cardFooter}>
+            <View style={styles.dateContainer}>
+              <Ionicons name="calendar-outline" size={16} color={colors.gray[500]} />
+              <Text style={styles.dateText}>{formatDate(item.fecha_vuelo)}</Text>
+            </View>
+            <View style={styles.positionContainer}>
+              <Ionicons name="person-outline" size={16} color={colors.primary} />
+              <Text style={styles.positionText}>{item.posicion}</Text>
+            </View>
+          </View>
+
+          {item.observaciones && (
+            <View style={styles.observationsContainer}>
+              <Ionicons name="information-circle-outline" size={14} color={colors.gray[500]} />
+              <Text style={styles.observationsText}>{item.observaciones}</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
     );
   };
+
+  if (loading && planificaciones.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Cargando planificaciones...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
@@ -144,7 +203,7 @@ export default function CrewList() {
           <Ionicons name="search" size={20} color={colors.gray[500]} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Buscar tripulante..."
+            placeholder="Buscar vuelos..."
             placeholderTextColor={colors.gray[500]}
             value={search}
             onChangeText={handleSearch}
@@ -161,12 +220,20 @@ export default function CrewList() {
             <Text style={styles.offlineText}>Sin conexión</Text>
           </View>
         )}
+        {user && (
+          <View style={styles.userInfo}>
+            <Text style={styles.welcomeText}>Hola, {user.nombres}</Text>
+            <Text style={styles.positionText}>
+              {user.posicion.descripcion} ({user.crew_id})
+            </Text>
+          </View>
+        )}
       </View>
 
-      <Animated.FlatList
-        data={tripulantes}
-        renderItem={renderTripulante}
-        keyExtractor={(item) => item.id_tripulante.toString()}
+      <FlatList<Planificacion>
+        data={planificaciones}
+        renderItem={renderPlanificacion}
+        keyExtractor={(item) => item.id_planificacion.toString()}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl 
@@ -176,19 +243,24 @@ export default function CrewList() {
             tintColor={colors.primary}
           />
         }
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.1}
+        ListFooterComponent={
+          loading && planificaciones.length > 0 ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="people" size={80} color={colors.primary} style={styles.emptyIcon} />
+            <Ionicons name="calendar" size={80} color={colors.primary} style={styles.emptyIcon} />
             <Text style={styles.emptyText}>
-              {search ? 'No se encontraron tripulantes' : 'No hay tripulantes registrados'}
+              {search ? 'No se encontraron planificaciones' : 'No hay planificaciones asignadas'}
             </Text>
-            <TouchableOpacity 
-              style={styles.emptyButton} 
-              onPress={() => router.push('/(tabs)/enroll')}
-            >
-              <Ionicons name="person-add" size={20} color={colors.white} style={styles.emptyButtonIcon} />
-              <Text style={styles.emptyButtonText}>Enrolar Tripulante</Text>
-            </TouchableOpacity>
+            <Text style={styles.emptySubtext}>
+              {search ? 'Intenta con otros términos de búsqueda' : 'Cuando tengas vuelos asignados aparecerán aquí'}
+            </Text>
           </View>
         }
         showsVerticalScrollIndicator={false}
@@ -206,6 +278,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.gray[600],
   },
   searchContainer: {
     backgroundColor: colors.primary,
@@ -230,6 +312,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 15,
     height: 45,
+    marginBottom: 12,
   },
   searchIcon: {
     marginRight: 10,
@@ -248,7 +331,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 20,
-    marginTop: 10,
+    marginBottom: 8,
     alignSelf: 'center',
   },
   offlineText: {
@@ -257,115 +340,154 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 5,
   },
+  userInfo: {
+    alignItems: 'center',
+  },
+  welcomeText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  positionText: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    marginTop: 2,
+  },
   list: {
     padding: 15,
     paddingTop: 20,
   },
   cardContainer: {
-    marginBottom: 15,
+    marginBottom: 16,
   },
   card: {
-    borderRadius: 15,
     backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3.84,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     elevation: 3,
-    overflow: 'hidden',
   },
-  cardGradient: {
-    borderRadius: 15,
-  },
-  cardContent: {
+  cardHeader: {
     flexDirection: 'row',
-    padding: 15,
-  },
-  photo: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    marginRight: 15,
-    borderWidth: 2,
-    borderColor: colors.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  photoPlaceholder: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginRight: 15,
+    marginBottom: 16,
   },
-  photoPlaceholderText: {
-    color: colors.white,
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  info: {
+  flightInfo: {
     flex: 1,
   },
-  name: {
+  flightNumber: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.dark,
-    marginBottom: 8,
   },
-  detailRow: {
+  aircraft: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginTop: 2,
+  },
+  statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  detailIcon: {
-    marginRight: 6,
+  statusText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
   },
-  detail: {
+  routeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  cityContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  cityCode: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.dark,
+  },
+  timeText: {
+    fontSize: 16,
+    color: colors.gray[600],
+    marginTop: 4,
+  },
+  routeCenter: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  routeLine: {
+    width: 40,
+    height: 2,
+    backgroundColor: colors.primary,
+    marginTop: 4,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateText: {
     fontSize: 14,
-    color: colors.gray[700],
+    color: colors.gray[600],
+    marginLeft: 6,
   },
-  actionContainer: {
-    justifyContent: 'center',
+  positionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  actionButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: colors.gray[100],
+  observationsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+  },
+  observationsText: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginLeft: 6,
+    flex: 1,
+    lineHeight: 20,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 30,
+    padding: 40,
   },
   emptyIcon: {
     marginBottom: 20,
-    opacity: 0.7,
+    opacity: 0.6,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.gray[600],
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 8,
   },
-  emptyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-  },
-  emptyButtonIcon: {
-    marginRight: 8,
-  },
-  emptyButtonText: {
-    color: colors.white,
-    fontWeight: 'bold',
-    fontSize: 16,
+  emptySubtext: {
+    fontSize: 14,
+    color: colors.gray[500],
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

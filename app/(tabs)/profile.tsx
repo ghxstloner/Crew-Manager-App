@@ -1,3 +1,4 @@
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../../store/authStore';
@@ -29,6 +30,55 @@ export default function Profile() {
     );
   };
 
+  const getStatusText = (estado: string) => {
+    switch (estado) {
+      case 'Aprobado':
+        return 'Activo';
+      case 'Pendiente':
+        return 'Pendiente de Aprobación';
+      case 'Denegado':
+        return 'Denegado';
+      default:
+        return estado;
+    }
+  };
+
+  const getStatusColor = (estado: string) => {
+    switch (estado) {
+      case 'Aprobado':
+        return colors.success;
+      case 'Pendiente':
+        return colors.warning;
+      case 'Denegado':
+        return colors.danger;
+      default:
+        return colors.gray[500];
+    }
+  };
+
+  const getStatusIcon = (estado: string) => {
+    switch (estado) {
+      case 'Aprobado':
+        return 'checkmark-circle';
+      case 'Pendiente':
+        return 'time';
+      case 'Denegado':
+        return 'close-circle';
+      default:
+        return 'help-circle';
+    }
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
@@ -40,55 +90,131 @@ export default function Profile() {
         >
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
-              {user?.aerolinea?.logo_base64 ? (
+              {user?.imagen_url ? (
                 <Image 
-                  source={{ uri: `data:image/png;base64,${user.aerolinea.logo_base64}` }}
-                  style={styles.logoImage}
-                  resizeMode="contain"
+                  source={{ uri: user.imagen_url }}
+                  style={styles.profileImage}
+                  resizeMode="cover"
                 />
               ) : (
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{user?.name?.charAt(0) || 'U'}</Text>
+                  <Text style={styles.avatarText}>
+                    {user?.nombres?.charAt(0) || 'T'}{user?.apellidos?.charAt(0) || 'T'}
+                  </Text>
                 </View>
               )}
             </View>
-            <Text style={styles.username}>{user?.name || 'Usuario'}</Text>
-            <Text style={styles.email}>{user?.email || ''}</Text>
-            <View style={styles.roleContainer}>
-              <Ionicons name="shield-checkmark" size={14} color={colors.white} style={styles.roleIcon} />
-              <Text style={styles.role}>Administrador</Text>
+            <Text style={styles.username}>{user?.nombres_apellidos || 'Tripulante'}</Text>
+            <Text style={styles.crewId}>ID: {user?.crew_id || 'N/A'}</Text>
+            <View style={[styles.statusContainer, { backgroundColor: getStatusColor(user?.estado || '') }]}>
+              <Ionicons name={getStatusIcon(user?.estado || '')} size={14} color={colors.white} style={styles.statusIcon} />
+              <Text style={styles.statusText}>{getStatusText(user?.estado || 'Desconocido')}</Text>
             </View>
           </View>
         </LinearGradient>
 
         <View style={styles.content}>
-          {/* Información de la aerolínea */}
+          {/* Información Personal */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Aerolínea</Text>
+            <Text style={styles.sectionTitle}>Información Personal</Text>
             <View style={styles.infoCard}>
               <View style={styles.infoItem}>
                 <View style={styles.infoIconContainer}>
-                  <Ionicons name="airplane" size={22} color={colors.primary} />
+                  <Ionicons name="person" size={22} color={colors.primary} />
                 </View>
                 <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Compañía</Text>
-                  <Text style={styles.infoValue}>{user?.aerolinea?.descripcion || 'N/A'}</Text>
+                  <Text style={styles.infoLabel}>Nombres</Text>
+                  <Text style={styles.infoValue}>{user?.nombres || 'N/A'}</Text>
                 </View>
               </View>
               <View style={styles.divider} />
               <View style={styles.infoItem}>
                 <View style={styles.infoIconContainer}>
-                  <Ionicons name="person-circle" size={22} color={colors.success} />
+                  <Ionicons name="person" size={22} color={colors.primary} />
                 </View>
                 <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Usuario</Text>
-                  <Text style={styles.infoValue}>{user?.login || 'N/A'}</Text>
+                  <Text style={styles.infoLabel}>Apellidos</Text>
+                  <Text style={styles.infoValue}>{user?.apellidos || 'N/A'}</Text>
                 </View>
               </View>
+              <View style={styles.divider} />
+              <View style={styles.infoItem}>
+                <View style={styles.infoIconContainer}>
+                  <Ionicons name="document" size={22} color={colors.success} />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Pasaporte</Text>
+                  <Text style={styles.infoValue}>{user?.pasaporte || 'N/A'}</Text>
+                </View>
+              </View>
+              {user?.identidad && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoItem}>
+                    <View style={styles.infoIconContainer}>
+                      <Ionicons name="card" size={22} color={colors.secondary} />
+                    </View>
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Documento de Identidad</Text>
+                      <Text style={styles.infoValue}>{user.identidad}</Text>
+                    </View>
+                  </View>
+                </>
+              )}
             </View>
           </View>
 
-          {/* Estado del sistema */}
+          {/* Información Profesional */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Información Profesional</Text>
+            <View style={styles.infoCard}>
+              <View style={styles.infoItem}>
+                <View style={styles.infoIconContainer}>
+                  <Ionicons name="briefcase" size={22} color={colors.primary} />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Posición</Text>
+                  <Text style={styles.infoValue}>{user?.posicion.descripcion || 'N/A'}</Text>
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.infoItem}>
+                <View style={styles.infoIconContainer}>
+                  <Ionicons name="code" size={22} color={colors.secondary} />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Código de Posición</Text>
+                  <Text style={styles.infoValue}>{user?.posicion.codigo_posicion || 'N/A'}</Text>
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.infoItem}>
+                <View style={styles.infoIconContainer}>
+                  <Ionicons name="calendar" size={22} color={colors.success} />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Fecha de Solicitud</Text>
+                  <Text style={styles.infoValue}>{formatDate(user?.fecha_solicitud)}</Text>
+                </View>
+              </View>
+              {user?.fecha_aprobacion && (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.infoItem}>
+                    <View style={styles.infoIconContainer}>
+                      <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+                    </View>
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Fecha de Aprobación</Text>
+                      <Text style={styles.infoValue}>{formatDate(user.fecha_aprobacion)}</Text>
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+
+          {/* Estado del Sistema */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Estado del Sistema</Text>
             <View style={styles.infoCard}>
@@ -108,22 +234,24 @@ export default function Profile() {
               <View style={styles.divider} />
               <View style={styles.infoItem}>
                 <View style={styles.infoIconContainer}>
-                  <Ionicons name="sync" size={22} color={colors.primary} />
+                  <Ionicons name="person-circle" size={22} color={colors.primary} />
                 </View>
                 <View style={styles.infoContent}>
-                  <Text style={styles.infoLabel}>Última sincronización</Text>
-                  <Text style={styles.infoValue}>Hace 2 minutos</Text>
+                  <Text style={styles.infoLabel}>Estado del Perfil</Text>
+                  <Text style={styles.infoValue}>
+                    {user?.activo ? 'Activo' : 'Inactivo'}
+                  </Text>
                 </View>
               </View>
             </View>
           </View>
 
-          {/* Mensaje inspirador */}
+          {/* Mensaje informativo */}
           <View style={styles.messageCard}>
             <Ionicons name="information-circle" size={24} color={colors.primary} style={styles.messageIcon} />
-            <Text style={styles.messageTitle}>Gestión de Tripulación Eficiente</Text>
+            <Text style={styles.messageTitle}>CrewManager</Text>
             <Text style={styles.messageText}>
-              "Un equipo de tripulación bien gestionado es fundamental para una operación aérea segura y eficiente. CrewManager te permite optimizar recursos, cumplir normativas y ofrecer la mejor experiencia a tus pasajeros."
+              "Tu perfil profesional está sincronizado con el sistema de gestión de tripulación. Mantén actualizada tu información y consulta regularmente tus planificaciones de vuelo."
             </Text>
           </View>
 
@@ -134,6 +262,12 @@ export default function Profile() {
             <TouchableOpacity style={styles.actionButton}>
               <Ionicons name="help-circle" size={22} color={colors.primary} style={styles.actionIcon} />
               <Text style={styles.actionText}>Ayuda y soporte</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionButton}>
+              <Ionicons name="document-text" size={22} color={colors.primary} style={styles.actionIcon} />
+              <Text style={styles.actionText}>Términos y condiciones</Text>
               <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
             </TouchableOpacity>
           </View>
@@ -148,7 +282,7 @@ export default function Profile() {
 
           {/* Información de la versión */}
           <View style={styles.versionContainer}>
-            <Text style={styles.versionText}>CrewManager v1.0.0</Text>
+            <Text style={styles.versionText}>CrewManager v1.0.0 - Tripulantes</Text>
             <Text style={styles.versionSubtext}>© 2025 - Todos los derechos reservados</Text>
           </View>
         </View>
@@ -191,11 +325,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4.65,
     elevation: 8,
   },
-  logoImage: {
+  profileImage: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: colors.white,
+    borderWidth: 3,
+    borderColor: colors.white,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -206,7 +341,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   avatarText: {
-    fontSize: 42,
+    fontSize: 32,
     fontWeight: 'bold',
     color: colors.primary,
   },
@@ -215,25 +350,24 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.white,
     marginBottom: 5,
+    textAlign: 'center',
   },
-  email: {
-    fontSize: 14,
-    color: colors.white,
-    opacity: 0.8,
-    marginBottom: 10,
+  crewId: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: 12,
   },
-  roleContainer: {
+  statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
-  roleIcon: {
+  statusIcon: {
     marginRight: 5,
   },
-  role: {
+  statusText: {
     color: colors.white,
     fontWeight: '600',
     fontSize: 12,

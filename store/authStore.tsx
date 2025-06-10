@@ -1,11 +1,23 @@
 import { createContext, useContext, useState, useEffect, PropsWithChildren } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { apiService, User } from '../services/api';
+import { apiService, TripulanteUser, RegisterResponse, SolicitudEstado } from '../services/api';
 
 interface AuthContextType {
-  signIn: (username: string, password: string) => Promise<void>;
+  signIn: (crewId: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  user: User | null;
+  register: (tripulanteData: {
+    crew_id: string;
+    nombres: string;
+    apellidos: string;
+    pasaporte: string;
+    identidad?: string;
+    iata_aerolinea: string;
+    posicion: number;
+    password: string;
+    imageUri?: string;
+  }) => Promise<RegisterResponse>;
+  checkStatus: (crewId: string) => Promise<SolicitudEstado>;
+  user: TripulanteUser | null;
   token: string | null;
   isLoading: boolean;
 }
@@ -13,6 +25,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   signIn: async () => {},
   signOut: async () => {},
+  register: async () => { throw new Error('Not implemented'); },
+  checkStatus: async () => { throw new Error('Not implemented'); },
   user: null,
   token: null,
   isLoading: false,
@@ -27,7 +41,7 @@ export function useSession() {
 }
 
 export function SessionProvider({ children }: PropsWithChildren) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<TripulanteUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -41,30 +55,22 @@ export function SessionProvider({ children }: PropsWithChildren) {
       const storedUser = await AsyncStorage.getItem('user_data');
       
       if (storedToken && storedUser) {
-        const userDataRaw = JSON.parse(storedUser);
-        const aerolineaRaw = (userDataRaw.aerolinea ?? {}) as any;
-        const userData: User = {
-          id: userDataRaw.id,
-          login: userDataRaw.login,
-          name: userDataRaw.name,
-          email: userDataRaw.email,
-          is_admin: (userDataRaw as any).is_admin ?? '',
-          aerolinea: {
-            id_aerolinea: (aerolineaRaw.id_aerolinea ?? aerolineaRaw.id) ?? 0,
-            descripcion: (aerolineaRaw.descripcion ?? aerolineaRaw.nombre) ?? '',
-            siglas: aerolineaRaw.siglas ?? '',
-            logo_base64: aerolineaRaw.logo_base64,
-          },
-        };
+        const userData: TripulanteUser = JSON.parse(storedUser);
         
         setToken(storedToken);
         setUser(userData);
         apiService.setToken(storedToken);
-        apiService.setCurrentUser(userData); // ✅ LÍNEA CRÍTICA QUE FALTABA
+        apiService.setCurrentUser(userData);
         
         // Verificar si el token sigue siendo válido
         try {
-          await apiService.getUserInfo();
+          const response = await apiService.getUserInfo();
+          if (response.success) {
+            // Actualizar datos del usuario desde el servidor
+            setUser(response.data);
+            await AsyncStorage.setItem('user_data', JSON.stringify(response.data));
+            apiService.setCurrentUser(response.data);
+          }
         } catch (error) {
           // Token inválido, limpiar
           await signOut();
@@ -77,38 +83,53 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }
   };
 
-  const signIn = async (username: string, password: string) => {
+  const signIn = async (crewId: string, password: string) => {
     try {
-      const response = await apiService.login(username, password);
+      const response = await apiService.login(crewId, password);
       
       if (response.success) {
-        const { token: authToken, user: userDataRaw } = response.data;
-        const aerolineaRaw = (userDataRaw.aerolinea ?? {}) as any;
-        const userData: User = {
-          id: userDataRaw.id,
-          login: userDataRaw.login,
-          name: userDataRaw.name,
-          email: userDataRaw.email,
-          is_admin: (userDataRaw as any).is_admin ?? '',
-          aerolinea: {
-            id_aerolinea: (aerolineaRaw.id_aerolinea ?? aerolineaRaw.id) ?? 0,
-            descripcion: (aerolineaRaw.descripcion ?? aerolineaRaw.nombre) ?? '',
-            siglas: aerolineaRaw.siglas ?? '',
-          },
-        };
+        const { token: authToken, tripulante } = response.data;
         
         await AsyncStorage.setItem('auth_token', authToken);
-        await AsyncStorage.setItem('user_data', JSON.stringify(userData));
+        await AsyncStorage.setItem('user_data', JSON.stringify(tripulante));
         
         setToken(authToken);
-        setUser(userData);
+        setUser(tripulante);
         apiService.setToken(authToken);
-        apiService.setCurrentUser(userData); // ✅ LÍNEA CRÍTICA QUE FALTABA
+        apiService.setCurrentUser(tripulante);
       } else {
         throw new Error(response.message || 'Error en el login');
       }
     } catch (error: any) {
       throw new Error(error.message || 'Credenciales inválidas');
+    }
+  };
+
+  const register = async (tripulanteData: {
+    crew_id: string;
+    nombres: string;
+    apellidos: string;
+    pasaporte: string;
+    identidad?: string;
+    iata_aerolinea: string;
+    posicion: number;
+    password: string;
+    imageUri?: string;
+  }): Promise<RegisterResponse> => {
+    try {
+      const response = await apiService.register(tripulanteData);
+      return response;
+    } catch (error: any) {
+      throw new Error(error.message || 'Error al procesar el registro');
+    }
+  };
+
+  const checkStatus = async (crewId: string): Promise<SolicitudEstado> => {
+    try {
+      const response = await apiService.checkStatus(crewId);
+      return response;
+    } catch (error: any) {
+      throw new Error(error.message || 'Error al verificar estado');
     }
   };
 
@@ -122,12 +143,20 @@ export function SessionProvider({ children }: PropsWithChildren) {
       await AsyncStorage.removeItem('user_data');
       setToken(null);
       setUser(null);
-      apiService.clearAuth(); // ✅ LIMPIAR TAMBIÉN EL APISERVICE
+      apiService.clearAuth();
     }
   };
 
   return (
-    <AuthContext.Provider value={{ signIn, signOut, user, token, isLoading }}>
+    <AuthContext.Provider value={{ 
+      signIn, 
+      signOut, 
+      register,
+      checkStatus, 
+      user, 
+      token, 
+      isLoading 
+    }}>
       {children}
     </AuthContext.Provider>
   );

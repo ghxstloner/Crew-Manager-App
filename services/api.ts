@@ -1,52 +1,57 @@
 // services/api.ts
-// const API_BASE = 'http://192.168.2.11:8000/api';
 const API_BASE = 'https://crew.amaxoniaerp.com/api';
 
 interface LoginResponse {
   success: boolean;
   data: {
     token: string;
-    user: {
-      id: number;
-      login: string;
-      name: string;
-      email: string;
-      aerolinea: {
-        id: number;
-        nombre: string;
-        siglas: string;
-        logo_base64?: string;
-      };
-    };
+    tripulante: TripulanteUser;
   };
   message: string;
 }
 
-interface TripulanteResponse {
+interface RegisterResponse {
   success: boolean;
-  data: Array<{
-    id_tripulante: number;
+  data: {
+    id_solicitud: number;
     crew_id: string;
-    nombres: string;
-    apellidos: string;
     nombres_apellidos: string;
-    pasaporte: string;
-    identidad: string;
-    posicion: number;
-    posicion_info: {
-      id_posicion: number;
-      codigo_posicion: string;
-      descripcion: string;
-    };
-    aerolinea: {
-      id_aerolinea: number;
-      descripcion: string;
-      siglas: string;
-    };
-    imagen_url?: string;
-    fecha_creacion: string;
-  }>;
-  pagination: {
+    estado: string;
+    fecha_solicitud: string;
+  };
+  message: string;
+}
+
+interface StatusResponse {
+  success: boolean;
+  data: {
+    crew_id: string;
+    nombres_apellidos: string;
+    estado: 'Pendiente' | 'Aprobado' | 'Denegado';
+    fecha_solicitud: string;
+    fecha_aprobacion?: string;
+    motivo_rechazo?: string;
+  };
+  message: string;
+}
+
+interface PosicionesResponse {
+  success: boolean;
+  data: Posicion[];
+  message: string;
+}
+
+// Nueva interface para aerolíneas
+interface AerolineasResponse {
+  success: boolean;
+  data: Aerolinea[];
+  message: string;
+}
+
+interface PlanificacionesResponse {
+  success: boolean;
+  data: Planificacion[];
+  pagination?: {
     current_page: number;
     total: number;
     per_page: number;
@@ -57,37 +62,25 @@ interface TripulanteResponse {
   message: string;
 }
 
-interface CreateTripulanteRequest {
-  crew_id: string;
-  nombres: string;
-  apellidos: string;
-  pasaporte: string;
-  identidad?: string;
-  posicion: number;
-  imagen?: string;
-  iata_aerolinea: string;
-  id_aerolinea?: number;
-}
-
-interface PosicionesResponse {
+interface UserInfoResponse {
   success: boolean;
-  data: Posicion[];
+  data: TripulanteUser;
   message: string;
 }
 
 class ApiService {
   private token: string | null = null;
-  private currentUser: any = null;
+  private currentUser: TripulanteUser | null = null;
 
   setToken(token: string) {
     this.token = token;
   }
 
-  setCurrentUser(user: any) {
+  setCurrentUser(user: TripulanteUser) {
     this.currentUser = user;
   }
 
-  getCurrentUser() {
+  getCurrentUser(): TripulanteUser | null {
     return this.currentUser;
   }
 
@@ -96,7 +89,6 @@ class ApiService {
       'Accept': 'application/json',
     };
 
-    // ✅ Solo agregar Content-Type si NO es FormData
     if (!isFormData) {
       headers['Content-Type'] = 'application/json';
     }
@@ -108,17 +100,18 @@ class ApiService {
     return headers;
   }
 
-  async login(username: string, password: string): Promise<LoginResponse> {
-    
+  /**
+   * Iniciar sesión de tripulante
+   */
+  async login(crewId: string, password: string): Promise<LoginResponse> {
     const response = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
-        login: username,
+        crew_id: crewId,
         password: password,
       }),
     });
-
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -130,63 +123,27 @@ class ApiService {
     
     if (data.success) {
       this.setToken(data.data.token);
-      this.setCurrentUser(data.data.user);
+      this.setCurrentUser(data.data.tripulante);
     }
 
     return data;
   }
 
-  async getTripulantes(page: number = 1, search?: string): Promise<TripulanteResponse> {
-    let url = `${API_BASE}/crew?page=${page}`;
-    
-    if (search) {
-      url += `&search=${encodeURIComponent(search)}`;
-    }
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Error al obtener tripulantes:', errorData);
-      throw new Error(errorData.message || 'Error al obtener tripulantes');
-    }
-
-    const data = await response.json();
-    return data;
-  }
-
-  // ✅ Método corregido para React Native
-  async createTripulante(tripulanteData: {
+  /**
+   * Registrar nuevo tripulante (ACTUALIZADO CON AEROLÍNEA)
+   */
+  async register(tripulanteData: {
     crew_id: string;
     nombres: string;
     apellidos: string;
     pasaporte: string;
-    doc_identidad?: string;
-    id_posicion: number;
+    identidad?: string;
+    iata_aerolinea: string; // ← NUEVO CAMPO
+    posicion: number;
+    password: string;
     imageUri?: string;
-  }): Promise<any> {
-  
-    // Verificar que tenemos usuario logueado
-    if (!this.currentUser || !this.currentUser.aerolinea) {
-      console.error('No hay usuario logueado o falta aerolínea');
-      throw new Error('Usuario no autenticado correctamente');
-    }
-  
-    // ✅ Validar id_posicion antes de usar toString()
-    if (!tripulanteData.id_posicion || tripulanteData.id_posicion === 0) {
-      throw new Error('Debe seleccionar una posición válida');
-    }
-  
-    // ✅ CRÍTICO: Verificar que tenemos id_aerolinea
-    if (!this.currentUser.aerolinea.id_aerolinea) {
-      console.error('Usuario sin id_aerolinea:', this.currentUser);
-      throw new Error('Usuario sin aerolínea válida');
-    }
-  
-    // ✅ Crear FormData para React Native
+  }): Promise<RegisterResponse> {
+    
     const formData = new FormData();
     
     // Agregar campos de texto
@@ -194,16 +151,15 @@ class ApiService {
     formData.append('nombres', tripulanteData.nombres);
     formData.append('apellidos', tripulanteData.apellidos);
     formData.append('pasaporte', tripulanteData.pasaporte);
-    formData.append('posicion', tripulanteData.id_posicion.toString());
-    formData.append('iata_aerolinea', this.currentUser.aerolinea.siglas);
-    formData.append('id_aerolinea', this.currentUser.aerolinea.id_aerolinea.toString()); // ✅ FIX: Era .id
+    formData.append('iata_aerolinea', tripulanteData.iata_aerolinea); // ← NUEVO CAMPO
+    formData.append('posicion', tripulanteData.posicion.toString());
+    formData.append('password', tripulanteData.password);
     
-    // Agregar campos opcionales solo si tienen valor
-    if (tripulanteData.doc_identidad) {
-      formData.append('identidad', tripulanteData.doc_identidad);
+    if (tripulanteData.identidad) {
+      formData.append('identidad', tripulanteData.identidad);
     }
     
-    // ✅ Agregar imagen para React Native
+    // Agregar imagen si existe
     if (tripulanteData.imageUri) {
       formData.append('image', {
         uri: tripulanteData.imageUri,
@@ -212,168 +168,47 @@ class ApiService {
       } as any);
     }
 
-  
-    const response = await fetch(`${API_BASE}/crew`, {
+    const response = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
-      headers: this.getHeaders(true), // ✅ Indicar que es FormData
-      body: formData, // ✅ Enviar FormData directamente
-    });
-  
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Error del servidor:', errorData);
-      throw new Error(errorData.message || 'Error al crear tripulante');
-    }
-  
-    const data = await response.json();
-    return data;
-  }
-
-  async getTripulante(id: number): Promise<any> {
-
-    const response = await fetch(`${API_BASE}/crew/${id}`, {
-      method: 'GET',
-      headers: this.getHeaders(),
+      headers: this.getHeaders(true),
+      body: formData,
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Error al obtener tripulante:', errorData);
-      throw new Error(errorData.message || 'Error al obtener tripulante');
+      console.error('Error de registro:', errorData);
+      throw new Error(errorData.message || 'Error al procesar el registro');
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   }
 
-  async updateTripulante(id: number, tripulanteData: {
-    crew_id?: string;
-    nombres?: string;
-    apellidos?: string;
-    pasaporte?: string;
-    doc_identidad?: string;
-    id_posicion?: number;
-    imageUri?: string; // ✅ También cambiar update para URI
-  }): Promise<any> {
-
-    // ✅ Si hay imagen, usar FormData; si no, usar JSON
-    if (tripulanteData.imageUri) {
-      // Usar FormData para actualización con imagen
-      const formData = new FormData();
-      
-      if (tripulanteData.crew_id !== undefined) formData.append('crew_id', tripulanteData.crew_id);
-      if (tripulanteData.nombres !== undefined) formData.append('nombres', tripulanteData.nombres);
-      if (tripulanteData.apellidos !== undefined) formData.append('apellidos', tripulanteData.apellidos);
-      if (tripulanteData.pasaporte !== undefined) formData.append('pasaporte', tripulanteData.pasaporte);
-      if (tripulanteData.doc_identidad !== undefined) formData.append('identidad', tripulanteData.doc_identidad);
-      if (tripulanteData.id_posicion !== undefined) formData.append('posicion', tripulanteData.id_posicion.toString());
-      
-      if (this.currentUser?.aerolinea?.siglas) {
-        formData.append('iata_aerolinea', this.currentUser.aerolinea.siglas);
-      }
-      
-      // ✅ Agregar imagen para React Native
-      formData.append('image', {
-        uri: tripulanteData.imageUri,
-        type: 'image/jpeg',
-        name: 'photo.jpg',
-      } as any);
-
-      const response = await fetch(`${API_BASE}/crew/${id}`, {
-        method: 'PUT',
-        headers: this.getHeaders(true),
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error al actualizar tripulante:', errorData);
-        throw new Error(errorData.message || 'Error al actualizar tripulante');
-      }
-
-      const data = await response.json();
-      return data;
-    } else {
-      // Usar JSON para actualización sin imagen
-      const requestData: any = {};
-      
-      if (tripulanteData.crew_id !== undefined) requestData.crew_id = tripulanteData.crew_id;
-      if (tripulanteData.nombres !== undefined) requestData.nombres = tripulanteData.nombres;
-      if (tripulanteData.apellidos !== undefined) requestData.apellidos = tripulanteData.apellidos;
-      if (tripulanteData.pasaporte !== undefined) requestData.pasaporte = tripulanteData.pasaporte;
-      if (tripulanteData.doc_identidad !== undefined) requestData.identidad = tripulanteData.doc_identidad;
-      if (tripulanteData.id_posicion !== undefined) requestData.posicion = tripulanteData.id_posicion;
-      
-      if (this.currentUser?.aerolinea?.siglas) {
-        requestData.iata_aerolinea = this.currentUser.aerolinea.siglas;
-      }
-
-      const response = await fetch(`${API_BASE}/crew/${id}`, {
-        method: 'PUT',
-        headers: this.getHeaders(),
-        body: JSON.stringify(requestData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error al actualizar tripulante:', errorData);
-        throw new Error(errorData.message || 'Error al actualizar tripulante');
-      }
-
-      const data = await response.json();
-      return data;
-    }
-  }
-
-  async deleteTripulante(id: number): Promise<any> {
-
-    const response = await fetch(`${API_BASE}/crew/${id}`, {
-      method: 'DELETE',
+  /**
+   * Verificar estado de solicitud
+   */
+  async checkStatus(crewId: string): Promise<StatusResponse['data']> {
+    const response = await fetch(`${API_BASE}/auth/check-status`, {
+      method: 'POST',
       headers: this.getHeaders(),
+      body: JSON.stringify({
+        crew_id: crewId,
+      }),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Error al eliminar tripulante:', errorData);
-      throw new Error(errorData.message || 'Error al eliminar tripulante');
+      console.error('Error al verificar estado:', errorData);
+      throw new Error(errorData.message || 'Error al verificar estado');
     }
 
     const data = await response.json();
-    return data;
+    return data.data;
   }
 
-  async getPosiciones(): Promise<PosicionesResponse> {
-
-    const response = await fetch(`${API_BASE}/crew/posiciones/lista`, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-
-    if (!response.ok) {
-      console.error('Error al obtener posiciones, intentando endpoint alternativo...');
-      
-      // Intentar endpoint alternativo
-      const altResponse = await fetch(`${API_BASE}/crew/posiciones`, {
-        method: 'GET',
-        headers: this.getHeaders(),
-      });
-
-      if (!altResponse.ok) {
-        const errorData = await altResponse.json().catch(() => ({}));
-        console.error('Error al obtener posiciones:', errorData);
-        throw new Error(errorData.message || 'Error al obtener posiciones');
-      }
-
-      const data = await altResponse.json();
-      return data;
-    }
-
-    const data = await response.json();
-    return data;
-  }
-
-  async getUserInfo(): Promise<any> {
-
+  /**
+   * Obtener información del tripulante autenticado
+   */
+  async getUserInfo(): Promise<UserInfoResponse> {
     const response = await fetch(`${API_BASE}/auth/me`, {
       method: 'GET',
       headers: this.getHeaders(),
@@ -385,34 +220,13 @@ class ApiService {
       throw new Error(errorData.message || 'Error al obtener información del usuario');
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   }
 
-  async refreshToken(): Promise<any> {
-
-    const response = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Error al refrescar token:', errorData);
-      throw new Error(errorData.message || 'Error al refrescar token');
-    }
-
-    const data = await response.json();
-    
-    if (data.success && data.data.token) {
-      this.setToken(data.data.token);
-    }
-
-    return data;
-  }
-
+  /**
+   * Cerrar sesión
+   */
   async logout(): Promise<void> {
-
     if (this.token) {
       try {
         await fetch(`${API_BASE}/auth/logout`, {
@@ -426,6 +240,166 @@ class ApiService {
     
     this.token = null;
     this.currentUser = null;
+  }
+
+  /**
+   * Obtener todas las posiciones disponibles (sin autenticación para registro)
+   */
+  async getPosiciones(): Promise<PosicionesResponse> {
+    const response = await fetch(`${API_BASE}/posiciones`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error al obtener posiciones:', errorData);
+      throw new Error(errorData.message || 'Error al obtener posiciones');
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Obtener todas las aerolíneas disponibles (NUEVO - sin autenticación para registro)
+   */
+  async getAerolineas(): Promise<AerolineasResponse> {
+    const response = await fetch(`${API_BASE}/aerolineas`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error al obtener aerolíneas:', errorData);
+      throw new Error(errorData.message || 'Error al obtener aerolíneas');
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Obtener planificaciones del tripulante autenticado
+   */
+  async getPlanificaciones(page: number = 1, search?: string): Promise<PlanificacionesResponse> {
+    let url = `${API_BASE}/tripulante/planificaciones?page=${page}`;
+    
+    if (search) {
+      url += `&search=${encodeURIComponent(search)}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error al obtener planificaciones:', errorData);
+      throw new Error(errorData.message || 'Error al obtener planificaciones');
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Obtener perfil del tripulante
+   */
+  async getProfile(): Promise<UserInfoResponse> {
+    const response = await fetch(`${API_BASE}/tripulante/profile`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error al obtener perfil:', errorData);
+      throw new Error(errorData.message || 'Error al obtener perfil');
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Actualizar perfil del tripulante
+   */
+  async updateProfile(profileData: {
+    nombres?: string;
+    apellidos?: string;
+    pasaporte?: string;
+    identidad?: string;
+    imageUri?: string;
+  }): Promise<UserInfoResponse> {
+    
+    if (profileData.imageUri) {
+      // Usar FormData si hay imagen
+      const formData = new FormData();
+      
+      if (profileData.nombres) formData.append('nombres', profileData.nombres);
+      if (profileData.apellidos) formData.append('apellidos', profileData.apellidos);
+      if (profileData.pasaporte) formData.append('pasaporte', profileData.pasaporte);
+      if (profileData.identidad) formData.append('identidad', profileData.identidad);
+      
+      formData.append('image', {
+        uri: profileData.imageUri,
+        type: 'image/jpeg',
+        name: 'photo.jpg',
+      } as any);
+
+      const response = await fetch(`${API_BASE}/tripulante/profile`, {
+        method: 'PUT',
+        headers: this.getHeaders(true),
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Error al actualizar perfil');
+      }
+
+      return await response.json();
+    } else {
+      // Usar JSON si no hay imagen
+      const response = await fetch(`${API_BASE}/tripulante/profile`, {
+        method: 'PUT',
+        headers: this.getHeaders(),
+        body: JSON.stringify(profileData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Error al actualizar perfil');
+      }
+
+      return await response.json();
+    }
+  }
+
+  /**
+   * Cambiar contraseña
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<any> {
+    const response = await fetch(`${API_BASE}/tripulante/change-password`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al cambiar contraseña');
+    }
+
+    return await response.json();
   }
 
   // Métodos de utilidad
@@ -445,41 +419,26 @@ class ApiService {
 
 export const apiService = new ApiService();
 
-// Tipos para la app
-export interface User {
-  id: number;
-  login: string;
-  name: string;
-  email: string;
-  is_admin: string;
-  aerolinea: {
-    id_aerolinea: number;  // ✅ Era "id", debe ser "id_aerolinea"
-    descripcion: string;   // ✅ Era "nombre", debe ser "descripcion"
-    siglas: string;
-    logo_base64?: string;
-  };
-}
-
-export interface Tripulante {
-  id_tripulante: number;
+// Interfaces actualizadas para tripulantes
+export interface TripulanteUser {
+  id_solicitud: number;
   crew_id: string;
   nombres: string;
   apellidos: string;
   nombres_apellidos: string;
   pasaporte: string;
   identidad?: string;
-  posicion_info: {
+  iata_aerolinea: string; // ← NUEVO CAMPO
+  posicion: {
     id_posicion: number;
     codigo_posicion: string;
     descripcion: string;
   };
-  aerolinea: {
-    id_aerolinea: number;
-    descripcion: string;
-    siglas: string;
-  };
   imagen_url?: string;
-  fecha_creacion: string;
+  activo: boolean;
+  estado: 'Pendiente' | 'Aprobado' | 'Denegado';
+  fecha_solicitud: string;
+  fecha_aprobacion?: string;
 }
 
 export interface Posicion {
@@ -488,5 +447,47 @@ export interface Posicion {
   descripcion: string;
 }
 
+// Nueva interface para aerolíneas
+export interface Aerolinea {
+  id_aerolinea: number;
+  descripcion: string;
+  siglas: string;
+}
+
+export interface Planificacion {
+  id_planificacion: number;
+  crew_id: string;
+  fecha_vuelo: string;
+  hora_salida: string;
+  hora_llegada: string;
+  origen: string;
+  destino: string;
+  numero_vuelo: string;
+  aeronave: string;
+  posicion: string;
+  estado: string;
+  observaciones?: string;
+}
+
+export interface SolicitudEstado {
+  crew_id: string;
+  nombres_apellidos: string;
+  estado: 'Pendiente' | 'Aprobado' | 'Denegado';
+  fecha_solicitud: string;
+  fecha_aprobacion?: string;
+  motivo_rechazo?: string;
+}
+
+// Re-export User as TripulanteUser for compatibility
+export type User = TripulanteUser;
+
 // Exportar tipos de respuesta también
-export type { LoginResponse, TripulanteResponse, CreateTripulanteRequest, PosicionesResponse };
+export type { 
+  LoginResponse, 
+  RegisterResponse, 
+  StatusResponse, 
+  PosicionesResponse,
+  AerolineasResponse, // ← NUEVO
+  PlanificacionesResponse,
+  UserInfoResponse
+};
