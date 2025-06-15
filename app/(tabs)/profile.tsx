@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Image } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Image, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '../../store/authStore';
 import { useNetwork } from '../../store/networkStore';
@@ -7,10 +7,16 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { LinearGradient } from 'expo-linear-gradient';
+import { apiService } from '../../services/api';
 
 export default function Profile() {
-  const { signOut, user } = useSession();
+  const { signOut, user, setUser } = useSession();
   const { isConnected } = useNetwork();
+  
+  // Estados para edición
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedPassport, setEditedPassport] = useState(user?.pasaporte || '');
+  const [savingProfile, setSavingProfile] = useState(false);
 
   const handleSignOut = () => {
     Alert.alert(
@@ -28,6 +34,41 @@ export default function Profile() {
         }
       ]
     );
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editedPassport.trim()) {
+      Alert.alert('Error', 'El pasaporte no puede estar vacío');
+      return;
+    }
+
+    if (editedPassport === user?.pasaporte) {
+      setIsEditing(false);
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      const response = await apiService.updateProfile({
+        pasaporte: editedPassport.trim()
+      });
+
+      if (response.success && response.data) {
+        setUser(response.data);
+        setIsEditing(false);
+        Alert.alert('Éxito', 'Pasaporte actualizado correctamente');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'No se pudo actualizar el pasaporte');
+      setEditedPassport(user?.pasaporte || '');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedPassport(user?.pasaporte || '');
+    setIsEditing(false);
   };
 
   const getStatusText = (estado: string) => {
@@ -116,7 +157,18 @@ export default function Profile() {
         <View style={styles.content}>
           {/* Información Personal */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Información Personal</Text>
+            <View style={styles.sectionHeaderContainer}>
+              <Text style={styles.sectionTitle}>Información Personal</Text>
+              {!isEditing && (
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={() => setIsEditing(true)}
+                >
+                  <Ionicons name="create-outline" size={20} color={colors.primary} />
+                  <Text style={styles.editButtonText}>Editar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <View style={styles.infoCard}>
               <View style={styles.infoItem}>
                 <View style={styles.infoIconContainer}>
@@ -144,7 +196,40 @@ export default function Profile() {
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={styles.infoLabel}>Pasaporte</Text>
-                  <Text style={styles.infoValue}>{user?.pasaporte || 'N/A'}</Text>
+                  {isEditing ? (
+                    <View style={styles.editContainer}>
+                      <TextInput
+                        style={styles.editInput}
+                        value={editedPassport}
+                        onChangeText={setEditedPassport}
+                        placeholder="Número de pasaporte"
+                        autoCapitalize="characters"
+                        editable={!savingProfile}
+                      />
+                      <View style={styles.editActions}>
+                        <TouchableOpacity 
+                          style={styles.cancelButton}
+                          onPress={handleCancelEdit}
+                          disabled={savingProfile}
+                        >
+                          <Ionicons name="close" size={18} color={colors.danger} />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={styles.saveButton}
+                          onPress={handleSaveProfile}
+                          disabled={savingProfile}
+                        >
+                          {savingProfile ? (
+                            <ActivityIndicator size="small" color={colors.success} />
+                          ) : (
+                            <Ionicons name="checkmark" size={18} color={colors.success} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <Text style={styles.infoValue}>{user?.pasaporte || 'N/A'}</Text>
+                  )}
                 </View>
               </View>
               {user?.identidad && (
@@ -379,11 +464,32 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24,
   },
+  sectionHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.dark,
-    marginBottom: 12,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.light,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  editButtonText: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 4,
   },
   infoCard: {
     backgroundColor: colors.white,
@@ -424,6 +530,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.dark,
+  },
+  editContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  editInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.dark,
+    backgroundColor: colors.gray[50],
+  },
+  editActions: {
+    flexDirection: 'row',
+    marginLeft: 8,
+  },
+  cancelButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.light,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  saveButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.light,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.success,
   },
   divider: {
     height: 1,

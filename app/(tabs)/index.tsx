@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, RefreshControl, TouchableOpacity, 
-  TextInput, ActivityIndicator, Animated, Alert, FlatList 
+  TextInput, ActivityIndicator, Animated, Alert, Modal, ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { useSession } from '../../store/authStore';
 import { useNetwork } from '../../store/networkStore';
-import { apiService, Planificacion } from '../../services/api';
+import { apiService, Planificacion, MarcacionInfo } from '../../services/api';
+
+const AnimatedFlatList = Animated.createAnimatedComponent(Animated.FlatList<Planificacion>);
 
 export default function PlanificacionesList() {
   const { user } = useSession();
@@ -21,12 +23,24 @@ export default function PlanificacionesList() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const scrollY = useRef(new Animated.Value(0)).current;
+  
+  // Estados para el modal de marcación
+  const [showMarcacionModal, setShowMarcacionModal] = useState(false);
+  const [marcacionInfo, setMarcacionInfo] = useState<MarcacionInfo | null>(null);
+  const [loadingMarcacion, setLoadingMarcacion] = useState(false);
 
   useEffect(() => {
-    loadPlanificaciones();
-  }, []);
+    if (user) {
+      loadPlanificaciones();
+    }
+  }, [user]);
 
   const loadPlanificaciones = async (searchTerm?: string, pageNum: number = 1, showLoader: boolean = true) => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     if (!isConnected && pageNum === 1) {
       Alert.alert('Sin conexión', 'No se pueden cargar las planificaciones sin conexión a internet');
       setLoading(false);
@@ -47,7 +61,6 @@ export default function PlanificacionesList() {
           setPlanificaciones(prev => [...prev, ...response.data]);
         }
         
-        // Check if there are more pages
         const pagination = response.pagination;
         setHasMore(pagination ? pagination.current_page < pagination.last_page : false);
         setPage(pageNum);
@@ -62,6 +75,8 @@ export default function PlanificacionesList() {
   };
 
   const onRefresh = () => {
+    if (!user) return;
+    
     setRefreshing(true);
     setPage(1);
     setHasMore(true);
@@ -69,6 +84,8 @@ export default function PlanificacionesList() {
   };
 
   const handleSearch = (text: string) => {
+    if (!user) return;
+    
     setSearch(text);
     setPage(1);
     setHasMore(true);
@@ -76,19 +93,17 @@ export default function PlanificacionesList() {
   };
 
   const loadMore = () => {
-    if (!loading && hasMore && isConnected) {
+    if (!loading && hasMore && isConnected && user) {
       loadPlanificaciones(search, page + 1, false);
     }
   };
 
   const getStatusColor = (estado: string) => {
     switch (estado.toLowerCase()) {
-      case 'confirmado':
+      case 'procesada':
         return colors.success;
       case 'pendiente':
         return colors.warning;
-      case 'cancelado':
-        return colors.danger;
       default:
         return colors.gray[500];
     }
@@ -96,19 +111,22 @@ export default function PlanificacionesList() {
 
   const getStatusIcon = (estado: string) => {
     switch (estado.toLowerCase()) {
-      case 'confirmado':
+      case 'procesada':
         return 'checkmark-circle';
       case 'pendiente':
         return 'time';
-      case 'cancelado':
-        return 'close-circle';
       default:
         return 'help-circle';
     }
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const dateParts = dateString.split('-');
+    const year = parseInt(dateParts[0]);
+    const month = parseInt(dateParts[1]) - 1;
+    const day = parseInt(dateParts[2]);
+    
+    const date = new Date(year, month, day);
     return date.toLocaleDateString('es-ES', {
       weekday: 'short',
       day: '2-digit',
@@ -116,9 +134,43 @@ export default function PlanificacionesList() {
     });
   };
 
-  const formatTime = (timeString: string) => {
+  const formatTime = (timeString: string | null) => {
     if (!timeString) return '--:--';
     return timeString.substring(0, 5); // HH:MM format
+  };
+
+  const handlePlanificacionClick = async (item: Planificacion) => {
+    if (item.estado.toLowerCase() === 'procesada') {
+      // Si está procesada, mostrar información de marcación
+      setLoadingMarcacion(true);
+      setMarcacionInfo(null); // Limpiar datos previos
+      try {
+        const response = await apiService.getMarcacionInfo(item.id_planificacion);
+        
+        if (response.success && response.data) {
+          
+          setMarcacionInfo(response.data);
+          setShowMarcacionModal(true);
+          
+        } else {
+          
+          Alert.alert('Error', 'No se encontró información de marcación para esta planificación');
+        }
+      } catch (error: any) {
+        Alert.alert('Error', error.message || 'No se pudo obtener la información de marcación');
+      } finally {
+        setLoadingMarcacion(false);
+      }
+    } else {
+      // Si no está procesada, mostrar información básica
+      Alert.alert(
+        'Planificación', 
+        `Vuelo: ${item.numero_vuelo || 'N/A'}\n` +
+        `Aerolínea: ${item.iata_aerolinea || 'N/A'}\n` +
+        `Hora: ${formatTime(item.hora_salida)}\n` +
+        `Estado: ${item.estado}`
+      );
+    }
   };
 
   const renderPlanificacion = ({ item }: { item: Planificacion }) => {
@@ -128,17 +180,15 @@ export default function PlanificacionesList() {
     return (
       <TouchableOpacity 
         style={styles.cardContainer}
-        onPress={() => {
-          // TODO: Navigate to planificacion details
-          Alert.alert('Planificación', `Vuelo ${item.numero_vuelo}\n${item.origen} → ${item.destino}`);
-        }}
+        onPress={() => handlePlanificacionClick(item)}
         activeOpacity={0.7}
+        disabled={loadingMarcacion}
       >
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.flightInfo}>
-              <Text style={styles.flightNumber}>{item.numero_vuelo}</Text>
-              <Text style={styles.aircraft}>{item.aeronave}</Text>
+              <Text style={styles.flightNumber}>{item.numero_vuelo || 'N/A'}</Text>
+              <Text style={styles.aircraft}>{item.iata_aerolinea || 'N/A'}</Text>
             </View>
             <View style={[styles.statusContainer, { backgroundColor: statusColor }]}>
               <Ionicons name={statusIcon} size={14} color="#FFFFFF" />
@@ -146,33 +196,44 @@ export default function PlanificacionesList() {
             </View>
           </View>
 
+          {/* Mostrar solo la información que realmente tienes */}
           <View style={styles.routeContainer}>
-            <View style={styles.cityContainer}>
-              <Text style={styles.cityCode}>{item.origen}</Text>
-              <Text style={styles.timeText}>{formatTime(item.hora_salida)}</Text>
+            <View style={styles.dateTimeContainer}>
+              <View style={styles.dateContainer}>
+                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+                <Text style={styles.dateText}>{formatDate(item.fecha_vuelo)}</Text>
+              </View>
+              <View style={styles.timeContainer}>
+                <Ionicons name="time-outline" size={18} color={colors.primary} style={styles.timeIcon} />
+                <Text style={styles.timeText}>{formatTime(item.hora_salida)}</Text>
+              </View>
             </View>
             
-            <View style={styles.routeCenter}>
-              <Ionicons name="airplane" size={20} color={colors.primary} />
-              <View style={styles.routeLine} />
-            </View>
-            
-            <View style={styles.cityContainer}>
-              <Text style={styles.cityCode}>{item.destino}</Text>
-              <Text style={styles.timeText}>{formatTime(item.hora_llegada)}</Text>
-            </View>
+            {item.origen && item.destino ? (
+              // Si tienes origen y destino, mostrar ruta
+              <View style={styles.routeInfo}>
+                <View style={styles.cityContainer}>
+                  <Text style={styles.cityCode}>{item.origen}</Text>
+                </View>
+                
+                <View style={styles.routeCenter}>
+                  <Ionicons name="airplane" size={20} color={colors.primary} />
+                  <View style={styles.routeLine} />
+                </View>
+                
+                <View style={styles.cityContainer}>
+                  <Text style={styles.cityCode}>{item.destino}</Text>
+                </View>
+              </View>
+            ) : (
+              // Si no tienes origen/destino, mostrar solo posición sin icono
+              <View style={styles.positionInfo}>
+                <Text style={styles.positionText}>{item.posicion || 'N/A'}</Text>
+              </View>
+            )}
           </View>
 
-          <View style={styles.cardFooter}>
-            <View style={styles.dateContainer}>
-              <Ionicons name="calendar-outline" size={16} color={colors.gray[500]} />
-              <Text style={styles.dateText}>{formatDate(item.fecha_vuelo)}</Text>
-            </View>
-            <View style={styles.positionContainer}>
-              <Ionicons name="person-outline" size={16} color={colors.primary} />
-              <Text style={styles.positionText}>{item.posicion}</Text>
-            </View>
-          </View>
+
 
           {item.observaciones && (
             <View style={styles.observationsContainer}>
@@ -230,7 +291,7 @@ export default function PlanificacionesList() {
         )}
       </View>
 
-      <FlatList<Planificacion>
+      <AnimatedFlatList
         data={planificaciones}
         renderItem={renderPlanificacion}
         keyExtractor={(item) => item.id_planificacion.toString()}
@@ -270,6 +331,161 @@ export default function PlanificacionesList() {
         )}
         scrollEventThrottle={16}
       />
+
+      {/* Modal de Información de Marcación */}
+      <Modal
+        visible={showMarcacionModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setShowMarcacionModal(false);
+          setMarcacionInfo(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.marcacionModalContainer}>
+            <View style={styles.marcacionModalHeader}>
+              <View style={styles.marcacionHeaderInfo}>
+                <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+                <Text style={styles.marcacionModalTitle}>Información de Marcación</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setShowMarcacionModal(false);
+                  setMarcacionInfo(null);
+                }}
+              >
+                <Ionicons name="close" size={24} color={colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+
+            {(() => {
+              
+              if (loadingMarcacion) {
+                
+                return (
+                  <View style={styles.marcacionLoadingContainer}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={styles.marcacionLoadingText}>Cargando información...</Text>
+                  </View>
+                );
+              } else if (marcacionInfo) {
+                
+                return (
+                  <ScrollView style={styles.marcacionModalContent} showsVerticalScrollIndicator={false}>
+                {/* Información del vuelo */}
+                <View style={styles.marcacionSection}>
+                  <Text style={styles.marcacionSectionTitle}>Vuelo</Text>
+                  <View style={styles.marcacionInfoCard}>
+                    <View style={styles.marcacionInfoRow}>
+                      <View style={styles.marcacionInfoItem}>
+                        <Text style={styles.marcacionInfoLabel}>Número</Text>
+                        <Text style={styles.marcacionInfoValue}>{marcacionInfo.planificacion.numero_vuelo}</Text>
+                      </View>
+                      <View style={styles.marcacionInfoItem}>
+                        <Text style={styles.marcacionInfoLabel}>Aerolínea</Text>
+                        <Text style={styles.marcacionInfoValue}>{marcacionInfo.planificacion.iata_aerolinea}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.marcacionInfoRow}>
+                      <View style={styles.marcacionInfoItem}>
+                        <Text style={styles.marcacionInfoLabel}>Fecha</Text>
+                        <Text style={styles.marcacionInfoValue}>{formatDate(marcacionInfo.planificacion.fecha_vuelo)}</Text>
+                      </View>
+                      <View style={styles.marcacionInfoItem}>
+                        <Text style={styles.marcacionInfoLabel}>Hora</Text>
+                        <Text style={styles.marcacionInfoValue}>{formatTime(marcacionInfo.planificacion.hora_vuelo)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Información de marcación */}
+                <View style={styles.marcacionSection}>
+                  <Text style={styles.marcacionSectionTitle}>Marcación</Text>
+                  <View style={styles.marcacionInfoCard}>
+                    <View style={styles.marcacionInfoRow}>
+                      <View style={styles.marcacionInfoItem}>
+                        <Text style={styles.marcacionInfoLabel}>Fecha de Marcación</Text>
+                        <Text style={styles.marcacionInfoValue}>{formatDate(marcacionInfo.fecha_marcacion)}</Text>
+                      </View>
+                      <View style={styles.marcacionInfoItem}>
+                        <Text style={styles.marcacionInfoLabel}>Hora de Marcación</Text>
+                        <Text style={styles.marcacionInfoValue}>{formatTime(marcacionInfo.hora_marcacion)}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.marcacionInfoSingle}>
+                      <Text style={styles.marcacionInfoLabel}>Estado</Text>
+                      <View style={styles.marcacionStatusContainer}>
+                        <Ionicons 
+                          name={marcacionInfo.procesado ? "checkmark-circle" : "time"} 
+                          size={16} 
+                          color={marcacionInfo.procesado ? colors.success : colors.warning} 
+                        />
+                        <Text style={[
+                          styles.marcacionStatusText,
+                          { color: marcacionInfo.procesado ? colors.success : colors.warning }
+                        ]}>
+                          {marcacionInfo.procesado ? 'Procesado' : 'Pendiente'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Ubicación */}
+                <View style={styles.marcacionSection}>
+                  <Text style={styles.marcacionSectionTitle}>Ubicación</Text>
+                  <View style={styles.marcacionInfoCard}>
+                    <View style={styles.marcacionInfoSingle}>
+                      <Text style={styles.marcacionInfoLabel}>Aeropuerto</Text>
+                      <Text style={styles.marcacionInfoValue}>
+                        {marcacionInfo.lugar_marcacion.nombre} ({marcacionInfo.lugar_marcacion.codigo})
+                      </Text>
+                    </View>
+                    <View style={styles.marcacionInfoSingle}>
+                      <Text style={styles.marcacionInfoLabel}>Punto de Control</Text>
+                      <Text style={styles.marcacionInfoValue}>{marcacionInfo.punto_control.descripcion}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Dispositivo */}
+                {marcacionInfo.dispositivo && (
+                  <View style={styles.marcacionSection}>
+                    <Text style={styles.marcacionSectionTitle}>Dispositivo</Text>
+                    <View style={styles.marcacionInfoCard}>
+                      <View style={styles.marcacionInfoRow}>
+                        <View style={styles.marcacionInfoItem}>
+                          <Text style={styles.marcacionInfoLabel}>ID del Dispositivo</Text>
+                          <Text style={styles.marcacionInfoValue}>{marcacionInfo.dispositivo.device_id}</Text>
+                        </View>
+                        <View style={styles.marcacionInfoItem}>
+                          <Text style={styles.marcacionInfoLabel}>Número de Serie</Text>
+                          <Text style={styles.marcacionInfoValue}>{marcacionInfo.dispositivo.device_sn}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+
+                  </ScrollView>
+                );
+              } else {
+                
+                return (
+                  <View style={styles.marcacionEmptyContainer}>
+                    <Ionicons name="information-circle-outline" size={48} color={colors.gray[400]} />
+                    <Text style={styles.marcacionEmptyText}>No hay información disponible</Text>
+                  </View>
+                );
+              }
+            })()}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -406,20 +622,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
+    justifyContent: 'space-between',
+  },
+  dateTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  dateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateText: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginLeft: 6,
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  timeText: {
+    fontSize: 16,
+    color: colors.gray[600],
+    marginLeft: 8,
+    fontWeight: '600',
+  },
+  routeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    justifyContent: 'space-between',
   },
   cityContainer: {
-    flex: 1,
     alignItems: 'center',
   },
   cityCode: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.dark,
-  },
-  timeText: {
-    fontSize: 16,
-    color: colors.gray[600],
-    marginTop: 4,
   },
   routeCenter: {
     alignItems: 'center',
@@ -431,22 +673,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     marginTop: 4,
   },
+  positionInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  flightDetailsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  flightDetailsValue: {
+    fontSize: 14,
+    color: colors.gray[600],
+    fontWeight: '600',
+  },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dateContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dateText: {
-    fontSize: 14,
-    color: colors.gray[600],
-    marginLeft: 6,
-  },
-  positionContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
   },
   observationsContainer: {
@@ -489,5 +733,112 @@ const styles = StyleSheet.create({
     color: colors.gray[500],
     textAlign: 'center',
     lineHeight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  marcacionModalContainer: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    maxHeight: '85%',
+    minHeight: 300,
+  },
+  marcacionModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  marcacionHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  marcacionModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.dark,
+    marginLeft: 10,
+  },
+  modalCloseButton: {
+    padding: 10,
+  },
+  marcacionModalContent: {
+    maxHeight: 400,
+  },
+  marcacionSection: {
+    marginBottom: 20,
+  },
+  marcacionSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.dark,
+    marginBottom: 10,
+  },
+  marcacionInfoCard: {
+    backgroundColor: colors.gray[100],
+    borderRadius: 10,
+    padding: 10,
+  },
+  marcacionInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  marcacionInfoItem: {
+    flex: 1,
+  },
+  marcacionInfoLabel: {
+    fontSize: 14,
+    color: colors.gray[600],
+  },
+  marcacionInfoValue: {
+    fontSize: 14,
+    color: colors.gray[600],
+    fontWeight: '600',
+  },
+  marcacionInfoSingle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  marcacionStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  marcacionStatusText: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginLeft: 4,
+  },
+  timeIcon: {
+    marginLeft: 8,
+  },
+  // Estilos para el modal de marcación
+  marcacionLoadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  marcacionLoadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.gray[600],
+  },
+  marcacionEmptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  marcacionEmptyText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.gray[600],
+    textAlign: 'center',
   },
 });

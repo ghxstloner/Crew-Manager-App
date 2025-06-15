@@ -2,9 +2,9 @@
   "expo": {
     "name": "CrewManager",
     "slug": "CrewManager",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/original/airport-tower-with-crew-badge-original-1024x1024.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/tocumen-fondo-blanco.png",
@@ -17,7 +17,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/original/airport-tower-with-crew-badge-original-1024x1024.png",
         "backgroundColor": "#001689"
       },
       "package": "com.crewmanager.app",
@@ -26,7 +26,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/original/airport-tower-with-crew-badge-original-1024x1024.png",
       "bundler": "metro"
     },
     "plugins": [

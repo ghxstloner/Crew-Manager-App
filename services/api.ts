@@ -1,4 +1,4 @@
-// services/api.ts
+// services/api.ts - INTERFACES ACTUALIZADAS PARA DATOS REALES
 const API_BASE = 'https://crew.amaxoniaerp.com/api';
 
 interface LoginResponse {
@@ -22,6 +22,30 @@ interface RegisterResponse {
   message: string;
 }
 
+interface InitiateRegisterResponse {
+  success: boolean;
+  data: {
+    verification_key: string;
+    email: string;
+    crew_id: string;
+    expires_in_minutes: number;
+  };
+  message: string;
+}
+
+interface VerifyEmailResponse {
+  success: boolean;
+  data: {
+    id_solicitud: number;
+    crew_id: string;
+    nombres_apellidos: string;
+    estado: string;
+    fecha_solicitud: string;
+    email_verified: boolean;
+  };
+  message: string;
+}
+
 interface StatusResponse {
   success: boolean;
   data: {
@@ -41,7 +65,6 @@ interface PosicionesResponse {
   message: string;
 }
 
-// Nueva interface para aerolíneas
 interface AerolineasResponse {
   success: boolean;
   data: Aerolinea[];
@@ -130,7 +153,7 @@ class ApiService {
   }
 
   /**
-   * Registrar nuevo tripulante (ACTUALIZADO CON AEROLÍNEA)
+   * Registrar nuevo tripulante
    */
   async register(tripulanteData: {
     crew_id: string;
@@ -138,7 +161,8 @@ class ApiService {
     apellidos: string;
     pasaporte: string;
     identidad?: string;
-    iata_aerolinea: string; // ← NUEVO CAMPO
+    email: string;
+    iata_aerolinea: string;
     posicion: number;
     password: string;
     imageUri?: string;
@@ -146,12 +170,12 @@ class ApiService {
     
     const formData = new FormData();
     
-    // Agregar campos de texto
     formData.append('crew_id', tripulanteData.crew_id);
     formData.append('nombres', tripulanteData.nombres);
     formData.append('apellidos', tripulanteData.apellidos);
     formData.append('pasaporte', tripulanteData.pasaporte);
-    formData.append('iata_aerolinea', tripulanteData.iata_aerolinea); // ← NUEVO CAMPO
+    formData.append('email', tripulanteData.email);
+    formData.append('iata_aerolinea', tripulanteData.iata_aerolinea);
     formData.append('posicion', tripulanteData.posicion.toString());
     formData.append('password', tripulanteData.password);
     
@@ -159,7 +183,6 @@ class ApiService {
       formData.append('identidad', tripulanteData.identidad);
     }
     
-    // Agregar imagen si existe
     if (tripulanteData.imageUri) {
       formData.append('image', {
         uri: tripulanteData.imageUri,
@@ -167,20 +190,61 @@ class ApiService {
         name: 'photo.jpg',
       } as any);
     }
-
+  
     const response = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: this.getHeaders(true),
       body: formData,
     });
-
+  
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('Error de registro:', errorData);
+      
+      // Manejo específico de errores de validación
+      if (response.status === 422 && errorData.errors) {
+        const specificErrors = this.getSpecificValidationError(errorData);
+        throw new Error(specificErrors.message);
+      }
+      
       throw new Error(errorData.message || 'Error al procesar el registro');
     }
-
+  
     return await response.json();
+  }
+
+  /**
+   * Extraer errores específicos de validación
+   */
+  private getSpecificValidationError(errorData: any): { message: string; details: any } {
+    const errors = errorData.errors || {};
+    const errorDetails = errorData.error_details || {};
+    
+    // Priorizar los errores más importantes
+    const priorityFields = ['crew_id', 'pasaporte', 'email'];
+    
+    for (const field of priorityFields) {
+      if (errors[field]) {
+        return {
+          message: errors[field][0], // Primer mensaje del campo
+          details: errorDetails[field] || errors[field]
+        };
+      }
+    }
+    
+    // Si no hay errores prioritarios, tomar el primero disponible
+    const firstField = Object.keys(errors)[0];
+    if (firstField && errors[firstField]) {
+      return {
+        message: errors[firstField][0],
+        details: errorDetails[firstField] || errors[firstField]
+      };
+    }
+    
+    return {
+      message: errorData.message || 'Error de validación',
+      details: errors
+    };
   }
 
   /**
@@ -243,7 +307,7 @@ class ApiService {
   }
 
   /**
-   * Obtener todas las posiciones disponibles (sin autenticación para registro)
+   * Obtener todas las posiciones disponibles
    */
   async getPosiciones(): Promise<PosicionesResponse> {
     const response = await fetch(`${API_BASE}/posiciones`, {
@@ -264,7 +328,7 @@ class ApiService {
   }
 
   /**
-   * Obtener todas las aerolíneas disponibles (NUEVO - sin autenticación para registro)
+   * Obtener todas las aerolíneas disponibles
    */
   async getAerolineas(): Promise<AerolineasResponse> {
     const response = await fetch(`${API_BASE}/aerolineas`, {
@@ -301,7 +365,6 @@ class ApiService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Error al obtener planificaciones:', errorData);
       throw new Error(errorData.message || 'Error al obtener planificaciones');
     }
 
@@ -338,7 +401,6 @@ class ApiService {
   }): Promise<UserInfoResponse> {
     
     if (profileData.imageUri) {
-      // Usar FormData si hay imagen
       const formData = new FormData();
       
       if (profileData.nombres) formData.append('nombres', profileData.nombres);
@@ -365,7 +427,6 @@ class ApiService {
 
       return await response.json();
     } else {
-      // Usar JSON si no hay imagen
       const response = await fetch(`${API_BASE}/tripulante/profile`, {
         method: 'PUT',
         headers: this.getHeaders(),
@@ -402,7 +463,23 @@ class ApiService {
     return await response.json();
   }
 
-  // Métodos de utilidad
+  /**
+   * Obtener información de marcación para una planificación procesada
+   */
+  async getMarcacionInfo(planificacionId: number): Promise<MarcacionResponse> {
+    const response = await fetch(`${API_BASE}/tripulante/planificaciones/${planificacionId}/marcacion`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Error al obtener información de marcación');
+    }
+
+    return await response.json();
+  }
+
   isAuthenticated(): boolean {
     return !!this.token;
   }
@@ -415,11 +492,115 @@ class ApiService {
     this.token = null;
     this.currentUser = null;
   }
+
+  /**
+   * Iniciar registro con verificación de email
+   */
+  async initiateRegister(tripulanteData: {
+    crew_id: string;
+    nombres: string;
+    apellidos: string;
+    pasaporte: string;
+    identidad?: string;
+    email: string;
+    iata_aerolinea: string;
+    posicion: number;
+    password: string;
+    imageUri?: string;
+  }): Promise<InitiateRegisterResponse> {
+    
+    const formData = new FormData();
+    
+    formData.append('crew_id', tripulanteData.crew_id);
+    formData.append('nombres', tripulanteData.nombres);
+    formData.append('apellidos', tripulanteData.apellidos);
+    formData.append('pasaporte', tripulanteData.pasaporte);
+    formData.append('email', tripulanteData.email);
+    formData.append('iata_aerolinea', tripulanteData.iata_aerolinea);
+    formData.append('posicion', tripulanteData.posicion.toString());
+    formData.append('password', tripulanteData.password);
+    
+    if (tripulanteData.identidad) {
+      formData.append('identidad', tripulanteData.identidad);
+    }
+    
+    if (tripulanteData.imageUri) {
+      formData.append('image', {
+        uri: tripulanteData.imageUri,
+        type: 'image/jpeg',
+        name: 'photo.jpg',
+      } as any);
+    }
+  
+    const response = await fetch(`${API_BASE}/auth/initiate-register`, {
+      method: 'POST',
+      headers: this.getHeaders(true),
+      body: formData,
+    });
+  
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error al iniciar registro:', errorData);
+      
+      // Manejo específico de errores de validación
+      if (response.status === 422 && errorData.errors) {
+        const specificErrors = this.getSpecificValidationError(errorData);
+        throw new Error(specificErrors.message);
+      }
+      
+      throw new Error(errorData.message || 'Error al procesar la solicitud de registro');
+    }
+  
+    return await response.json();
+  }
+
+  /**
+   * Verificar email con PIN y completar registro
+   */
+  async verifyEmailAndRegister(verification_key: string, pin: string): Promise<VerifyEmailResponse> {
+    const response = await fetch(`${API_BASE}/auth/verify-email`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        verification_key,
+        pin,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error de verificación:', errorData);
+      throw new Error(errorData.message || 'Error al verificar email');
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Reenviar PIN de verificación
+   */
+  async resendVerificationPin(verification_key: string): Promise<InitiateRegisterResponse> {
+    const response = await fetch(`${API_BASE}/auth/resend-pin`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        verification_key,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error al reenviar PIN:', errorData);
+      throw new Error(errorData.message || 'Error al reenviar código de verificación');
+    }
+
+    return await response.json();
+  }
 }
 
 export const apiService = new ApiService();
 
-// Interfaces actualizadas para tripulantes
+// INTERFACES ACTUALIZADAS PARA DATOS REALES
 export interface TripulanteUser {
   id_solicitud: number;
   crew_id: string;
@@ -428,7 +609,7 @@ export interface TripulanteUser {
   nombres_apellidos: string;
   pasaporte: string;
   identidad?: string;
-  iata_aerolinea: string; // ← NUEVO CAMPO
+  iata_aerolinea: string;
   posicion: {
     id_posicion: number;
     codigo_posicion: string;
@@ -447,26 +628,29 @@ export interface Posicion {
   descripcion: string;
 }
 
-// Nueva interface para aerolíneas
 export interface Aerolinea {
   id_aerolinea: number;
   descripcion: string;
   siglas: string;
 }
 
+// INTERFACE PLANIFICACION ACTUALIZADA CON DATOS REALES
 export interface Planificacion {
   id_planificacion: number;
   crew_id: string;
   fecha_vuelo: string;
-  hora_salida: string;
-  hora_llegada: string;
-  origen: string;
-  destino: string;
-  numero_vuelo: string;
-  aeronave: string;
-  posicion: string;
-  estado: string;
-  observaciones?: string;
+  numero_vuelo: string | null;
+  hora_salida: string | null; // Tu campo real hora_vuelo
+  iata_aerolinea: string | null;
+  estado: string; // Mapeado de estatus: P=Pendiente, R=Procesada
+  posicion: string | null; // Código de posición
+  
+  // Campos que NO existen en tu tabla pero el frontend los espera
+  origen: string | null;
+  destino: string | null;
+  hora_llegada: string | null;
+  aeronave: string | null;
+  observaciones: string | null;
 }
 
 export interface SolicitudEstado {
@@ -478,16 +662,52 @@ export interface SolicitudEstado {
   motivo_rechazo?: string;
 }
 
-// Re-export User as TripulanteUser for compatibility
+export interface MarcacionInfo {
+  id_marcacion: number;
+  fecha_marcacion: string;
+  hora_marcacion: string;
+  lugar_marcacion: {
+    id: number;
+    nombre: string;
+    codigo: string;
+  };
+  punto_control: {
+    id: number;
+    descripcion: string;
+    aeropuerto: string;
+  };
+  dispositivo: {
+    device_id: number;
+    device_sn: string;
+  } | null;
+  procesado: boolean;
+  tipo_marcacion: number;
+  usuario_sistema: string;
+  planificacion: {
+    id: number;
+    numero_vuelo: string;
+    fecha_vuelo: string;
+    hora_vuelo: string;
+    iata_aerolinea: string;
+  };
+}
+
+export interface MarcacionResponse {
+  success: boolean;
+  data: MarcacionInfo;
+  message: string;
+}
+
 export type User = TripulanteUser;
 
-// Exportar tipos de respuesta también
 export type { 
   LoginResponse, 
   RegisterResponse, 
+  InitiateRegisterResponse,
+  VerifyEmailResponse,
   StatusResponse, 
   PosicionesResponse,
-  AerolineasResponse, // ← NUEVO
+  AerolineasResponse,
   PlanificacionesResponse,
   UserInfoResponse
 };
