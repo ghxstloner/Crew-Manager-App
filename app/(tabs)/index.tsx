@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, RefreshControl, TouchableOpacity, 
-  TextInput, ActivityIndicator, Animated, Alert, Modal, ScrollView
+  TextInput, ActivityIndicator, Animated, Alert, Modal, ScrollView,
+  Dimensions, useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +16,7 @@ const AnimatedFlatList = Animated.createAnimatedComponent(Animated.FlatList<Plan
 export default function PlanificacionesList() {
   const { user } = useSession();
   const { isConnected } = useNetwork();
+  const { height: windowHeight } = useWindowDimensions();
   
   const [planificaciones, setPlanificaciones] = useState<Planificacion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,6 +150,13 @@ export default function PlanificacionesList() {
         const response = await apiService.getMarcacionInfo(item.id_planificacion);
         
         if (response.success && response.data) {
+          // Log para visualizar información del aeropuerto
+          console.log('Información de marcación obtenida:', {
+            aeropuerto: response.data.lugar_marcacion.nombre,
+            codigo_aeropuerto: response.data.lugar_marcacion.codigo,
+            punto_control: response.data.punto_control.descripcion,
+            planificacion_id: item.id_planificacion
+          });
           
           setMarcacionInfo(response.data);
           setShowMarcacionModal(true);
@@ -162,20 +171,19 @@ export default function PlanificacionesList() {
         setLoadingMarcacion(false);
       }
     } else {
-      // Si no está procesada, mostrar información básica
-      Alert.alert(
-        'Planificación', 
-        `Vuelo: ${item.numero_vuelo || 'N/A'}\n` +
-        `Aerolínea: ${item.iata_aerolinea || 'N/A'}\n` +
-        `Hora: ${formatTime(item.hora_salida)}\n` +
-        `Estado: ${item.estado}`
-      );
+      // Si no está procesada, mostrar modal moderno con información básica
+      setMarcacionInfo({
+        planificacion: item,
+        isPending: true
+      } as any);
+      setShowMarcacionModal(true);
     }
   };
 
   const renderPlanificacion = ({ item }: { item: Planificacion }) => {
     const statusColor = getStatusColor(item.estado);
     const statusIcon = getStatusIcon(item.estado);
+    const isPending = item.estado.toLowerCase() === 'pendiente';
 
     return (
       <TouchableOpacity 
@@ -184,61 +192,96 @@ export default function PlanificacionesList() {
         activeOpacity={0.7}
         disabled={loadingMarcacion}
       >
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.flightInfo}>
-              <Text style={styles.flightNumber}>{item.numero_vuelo || 'N/A'}</Text>
-              <Text style={styles.aircraft}>{item.iata_aerolinea || 'N/A'}</Text>
-            </View>
-            <View style={[styles.statusContainer, { backgroundColor: statusColor }]}>
-              <Ionicons name={statusIcon} size={14} color="#FFFFFF" />
-              <Text style={styles.statusText}>{item.estado}</Text>
-            </View>
-          </View>
-
-          {/* Mostrar solo la información que realmente tienes */}
-          <View style={styles.routeContainer}>
-            <View style={styles.dateTimeContainer}>
-              <View style={styles.dateContainer}>
-                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                <Text style={styles.dateText}>{formatDate(item.fecha_vuelo)}</Text>
+        <View style={[styles.card, isPending ? styles.pendingCard : styles.processedCard]}>
+          {isPending ? (
+            // Diseño moderno para planificaciones pendientes
+            <View style={styles.pendingCardContent}>
+              <View style={styles.pendingHeader}>
+                <View style={styles.pendingFlightInfo}>
+                  <Text style={styles.pendingFlightNumber}>{item.numero_vuelo || 'N/A'}</Text>
+                  <Text style={styles.pendingPosition}>{item.iata_aerolinea || 'N/A'}</Text>
+                </View>
+                <View style={[styles.pendingStatusBadge, { backgroundColor: statusColor }]}>
+                  <Ionicons name={statusIcon} size={16} color="#FFFFFF" />
+                  <Text style={styles.pendingStatusText}>{item.estado}</Text>
+                </View>
               </View>
-              <View style={styles.timeContainer}>
-                <Ionicons name="time-outline" size={18} color={colors.primary} style={styles.timeIcon} />
-                <Text style={styles.timeText}>{formatTime(item.hora_salida)}</Text>
-              </View>
-            </View>
-            
-            {item.origen && item.destino ? (
-              // Si tienes origen y destino, mostrar ruta
-              <View style={styles.routeInfo}>
-                <View style={styles.cityContainer}>
-                  <Text style={styles.cityCode}>{item.origen}</Text>
+              
+              <View style={styles.pendingDetails}>
+                <View style={styles.pendingDetailItem}>
+                  <View style={styles.pendingDetailIcon}>
+                    <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.pendingDetailContent}>
+                    <Text style={styles.pendingDetailLabel}>Fecha</Text>
+                    <Text style={styles.pendingDetailValue}>{formatDate(item.fecha_vuelo)}</Text>
+                  </View>
                 </View>
                 
-                <View style={styles.routeCenter}>
-                  <Ionicons name="airplane" size={20} color={colors.primary} />
-                  <View style={styles.routeLine} />
+                <View style={styles.pendingDetailSeparator} />
+                
+                <View style={styles.pendingDetailItem}>
+                  <View style={styles.pendingDetailIcon}>
+                    <Ionicons name="time-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.pendingDetailContent}>
+                    <Text style={styles.pendingDetailLabel}>Hora</Text>
+                    <Text style={styles.pendingDetailValue}>{formatTime(item.hora_salida)}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {item.observaciones && (
+                <View style={styles.pendingObservations}>
+                  <Ionicons name="information-circle-outline" size={16} color={colors.gray[500]} />
+                  <Text style={styles.pendingObservationsText}>{item.observaciones}</Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            // Diseño moderno para planificaciones procesadas (igual que pendientes)
+            <View style={styles.pendingCardContent}>
+              <View style={styles.pendingHeader}>
+                <View style={styles.pendingFlightInfo}>
+                  <Text style={styles.pendingFlightNumber}>{item.numero_vuelo || 'N/A'}</Text>
+                  <Text style={styles.pendingPosition}>{item.iata_aerolinea || 'N/A'}</Text>
+                </View>
+                <View style={[styles.pendingStatusBadge, { backgroundColor: statusColor }]}>
+                  <Ionicons name={statusIcon} size={16} color="#FFFFFF" />
+                  <Text style={styles.pendingStatusText}>{item.estado}</Text>
+                </View>
+              </View>
+              
+              <View style={styles.pendingDetails}>
+                <View style={styles.pendingDetailItem}>
+                  <View style={styles.pendingDetailIcon}>
+                    <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.pendingDetailContent}>
+                    <Text style={styles.pendingDetailLabel}>Fecha</Text>
+                    <Text style={styles.pendingDetailValue}>{formatDate(item.fecha_vuelo)}</Text>
+                  </View>
                 </View>
                 
-                <View style={styles.cityContainer}>
-                  <Text style={styles.cityCode}>{item.destino}</Text>
+                <View style={styles.pendingDetailSeparator} />
+                
+                <View style={styles.pendingDetailItem}>
+                  <View style={styles.pendingDetailIcon}>
+                    <Ionicons name="time-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.pendingDetailContent}>
+                    <Text style={styles.pendingDetailLabel}>Hora</Text>
+                    <Text style={styles.pendingDetailValue}>{formatTime(item.hora_salida)}</Text>
+                  </View>
                 </View>
               </View>
-            ) : (
-              // Si no tienes origen/destino, mostrar solo posición sin icono
-              <View style={styles.positionInfo}>
-                <Text style={styles.positionText}>{item.posicion || 'N/A'}</Text>
-              </View>
-            )}
-          </View>
 
-
-
-          {item.observaciones && (
-            <View style={styles.observationsContainer}>
-              <Ionicons name="information-circle-outline" size={14} color={colors.gray[500]} />
-              <Text style={styles.observationsText}>{item.observaciones}</Text>
+              {item.observaciones && (
+                <View style={styles.pendingObservations}>
+                  <Ionicons name="information-circle-outline" size={16} color={colors.gray[500]} />
+                  <Text style={styles.pendingObservationsText}>{item.observaciones}</Text>
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -342,149 +385,207 @@ export default function PlanificacionesList() {
           setMarcacionInfo(null);
         }}
       >
-        <View style={styles.modalOverlay}>
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowMarcacionModal(false);
+            setMarcacionInfo(null);
+          }}
+        >
           <View style={styles.marcacionModalContainer}>
-            <View style={styles.marcacionModalHeader}>
-              <View style={styles.marcacionHeaderInfo}>
-                <Ionicons name="checkmark-circle" size={24} color={colors.success} />
-                <Text style={styles.marcacionModalTitle}>Información de Marcación</Text>
+            <TouchableOpacity 
+              style={styles.modalContent}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.marcacionModalHeader}>
+                <View style={styles.marcacionHeaderInfo}>
+                  <Ionicons 
+                    name={(marcacionInfo as any)?.isPending ? "time" : "checkmark-circle"} 
+                    size={24} 
+                    color={(marcacionInfo as any)?.isPending ? colors.warning : colors.success} 
+                  />
+                  <Text style={styles.marcacionModalTitle}>
+                    {(marcacionInfo as any)?.isPending ? 'Planificación Pendiente' : 'Información de Marcación'}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.modalCloseButton}
+                  onPress={() => {
+                    setShowMarcacionModal(false);
+                    setMarcacionInfo(null);
+                  }}
+                >
+                  <Ionicons name="close" size={24} color={colors.gray[600]} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity 
-                style={styles.modalCloseButton}
-                onPress={() => {
-                  setShowMarcacionModal(false);
-                  setMarcacionInfo(null);
-                }}
-              >
-                <Ionicons name="close" size={24} color={colors.gray[600]} />
-              </TouchableOpacity>
-            </View>
 
-            {(() => {
-              
-              if (loadingMarcacion) {
-                
-                return (
-                  <View style={styles.marcacionLoadingContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={styles.marcacionLoadingText}>Cargando información...</Text>
-                  </View>
-                );
-              } else if (marcacionInfo) {
-                
-                return (
-                  <ScrollView style={styles.marcacionModalContent} showsVerticalScrollIndicator={false}>
-                {/* Información del vuelo */}
-                <View style={styles.marcacionSection}>
-                  <Text style={styles.marcacionSectionTitle}>Vuelo</Text>
-                  <View style={styles.marcacionInfoCard}>
-                    <View style={styles.marcacionInfoRow}>
-                      <View style={styles.marcacionInfoItem}>
-                        <Text style={styles.marcacionInfoLabel}>Número</Text>
-                        <Text style={styles.marcacionInfoValue}>{marcacionInfo.planificacion.numero_vuelo}</Text>
-                      </View>
-                      <View style={styles.marcacionInfoItem}>
-                        <Text style={styles.marcacionInfoLabel}>Aerolínea</Text>
-                        <Text style={styles.marcacionInfoValue}>{marcacionInfo.planificacion.iata_aerolinea}</Text>
-                      </View>
+              {(() => {
+                if (loadingMarcacion) {
+                  return (
+                    <View style={styles.marcacionLoadingContainer}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                      <Text style={styles.marcacionLoadingText}>Cargando información...</Text>
                     </View>
-                    <View style={styles.marcacionInfoRow}>
-                      <View style={styles.marcacionInfoItem}>
-                        <Text style={styles.marcacionInfoLabel}>Fecha</Text>
-                        <Text style={styles.marcacionInfoValue}>{formatDate(marcacionInfo.planificacion.fecha_vuelo)}</Text>
-                      </View>
-                      <View style={styles.marcacionInfoItem}>
-                        <Text style={styles.marcacionInfoLabel}>Hora</Text>
-                        <Text style={styles.marcacionInfoValue}>{formatTime(marcacionInfo.planificacion.hora_vuelo)}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Información de marcación */}
-                <View style={styles.marcacionSection}>
-                  <Text style={styles.marcacionSectionTitle}>Marcación</Text>
-                  <View style={styles.marcacionInfoCard}>
-                    <View style={styles.marcacionInfoRow}>
-                      <View style={styles.marcacionInfoItem}>
-                        <Text style={styles.marcacionInfoLabel}>Fecha de Marcación</Text>
-                        <Text style={styles.marcacionInfoValue}>{formatDate(marcacionInfo.fecha_marcacion)}</Text>
-                      </View>
-                      <View style={styles.marcacionInfoItem}>
-                        <Text style={styles.marcacionInfoLabel}>Hora de Marcación</Text>
-                        <Text style={styles.marcacionInfoValue}>{formatTime(marcacionInfo.hora_marcacion)}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.marcacionInfoSingle}>
-                      <Text style={styles.marcacionInfoLabel}>Estado</Text>
-                      <View style={styles.marcacionStatusContainer}>
-                        <Ionicons 
-                          name={marcacionInfo.procesado ? "checkmark-circle" : "time"} 
-                          size={16} 
-                          color={marcacionInfo.procesado ? colors.success : colors.warning} 
-                        />
-                        <Text style={[
-                          styles.marcacionStatusText,
-                          { color: marcacionInfo.procesado ? colors.success : colors.warning }
-                        ]}>
-                          {marcacionInfo.procesado ? 'Procesado' : 'Pendiente'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Ubicación */}
-                <View style={styles.marcacionSection}>
-                  <Text style={styles.marcacionSectionTitle}>Ubicación</Text>
-                  <View style={styles.marcacionInfoCard}>
-                    <View style={styles.marcacionInfoSingle}>
-                      <Text style={styles.marcacionInfoLabel}>Aeropuerto</Text>
-                      <Text style={styles.marcacionInfoValue}>
-                        {marcacionInfo.lugar_marcacion.nombre} ({marcacionInfo.lugar_marcacion.codigo})
-                      </Text>
-                    </View>
-                    <View style={styles.marcacionInfoSingle}>
-                      <Text style={styles.marcacionInfoLabel}>Punto de Control</Text>
-                      <Text style={styles.marcacionInfoValue}>{marcacionInfo.punto_control.descripcion}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Dispositivo */}
-                {marcacionInfo.dispositivo && (
-                  <View style={styles.marcacionSection}>
-                    <Text style={styles.marcacionSectionTitle}>Dispositivo</Text>
-                    <View style={styles.marcacionInfoCard}>
-                      <View style={styles.marcacionInfoRow}>
-                        <View style={styles.marcacionInfoItem}>
-                          <Text style={styles.marcacionInfoLabel}>ID del Dispositivo</Text>
-                          <Text style={styles.marcacionInfoValue}>{marcacionInfo.dispositivo.device_id}</Text>
-                        </View>
-                        <View style={styles.marcacionInfoItem}>
-                          <Text style={styles.marcacionInfoLabel}>Número de Serie</Text>
-                          <Text style={styles.marcacionInfoValue}>{marcacionInfo.dispositivo.device_sn}</Text>
+                  );
+                } else if (marcacionInfo) {
+                  // Verificar si es una planificación pendiente
+                  const isPending = (marcacionInfo as any).isPending;
+                  const planData = isPending ? (marcacionInfo as any).planificacion : marcacionInfo.planificacion;
+                  
+                  return (
+                    <ScrollView 
+                      style={styles.marcacionModalContent}
+                      contentContainerStyle={styles.marcacionScrollContent}
+                      showsVerticalScrollIndicator={true}
+                      bounces={true}
+                      nestedScrollEnabled={true}
+                    >
+                      {/* Información del vuelo */}
+                      <View style={styles.marcacionSection}>
+                        <Text style={styles.marcacionSectionTitle}>Información del Vuelo</Text>
+                        <View style={styles.marcacionInfoCard}>
+                          <View style={styles.marcacionInfoRow}>
+                            <View style={styles.marcacionInfoItem}>
+                              <Text style={styles.marcacionInfoLabel}>Número de Vuelo</Text>
+                              <Text style={styles.marcacionInfoValue}>{planData.numero_vuelo || 'N/A'}</Text>
+                            </View>
+                            {/* Solo mostrar aerolínea si NO es pendiente */}
+                            {!isPending && (
+                              <View style={styles.marcacionInfoItem}>
+                                <Text style={styles.marcacionInfoLabel}>Aerolínea</Text>
+                                <Text style={styles.marcacionInfoValue}>{planData.iata_aerolinea || 'N/A'}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.marcacionInfoRow}>
+                            <View style={styles.marcacionInfoItem}>
+                              <Text style={styles.marcacionInfoLabel}>Fecha del Vuelo</Text>
+                              <Text style={styles.marcacionInfoValue}>{formatDate(planData.fecha_vuelo)}</Text>
+                            </View>
+                            <View style={styles.marcacionInfoItem}>
+                              <Text style={styles.marcacionInfoLabel}>Hora de Salida</Text>
+                              <Text style={styles.marcacionInfoValue}>{formatTime(planData.hora_salida || planData.hora_vuelo)}</Text>
+                            </View>
+                          </View>
+                          {isPending && (
+                            <View style={styles.marcacionInfoSingle}>
+                              <Text style={styles.marcacionInfoLabel}>Estado</Text>
+                              <View style={styles.pendingStatusBadgeModal}>
+                                <Ionicons name="time" size={16} color={colors.warning} />
+                                <Text style={[styles.marcacionInfoValue, { color: colors.warning, marginLeft: 6 }]}>Pendiente</Text>
+                              </View>
+                            </View>
+                          )}
+                          {planData.observaciones && (
+                            <View style={styles.marcacionInfoSingleColumn}>
+                              <Text style={styles.marcacionInfoLabel}>Observaciones</Text>
+                              <Text style={styles.marcacionInfoValue}>{planData.observaciones}</Text>
+                            </View>
+                          )}
                         </View>
                       </View>
+
+                      {/* Solo mostrar información de marcación si no es pendiente */}
+                      {!isPending && (
+                        <>
+                          {/* Información de marcación */}
+                          <View style={styles.marcacionSection}>
+                            <Text style={styles.marcacionSectionTitle}>Datos de Marcación</Text>
+                            <View style={styles.marcacionInfoCard}>
+                              <View style={styles.marcacionInfoRow}>
+                                <View style={styles.marcacionInfoItem}>
+                                  <Text style={styles.marcacionInfoLabel}>Fecha de Marcación</Text>
+                                  <Text style={styles.marcacionInfoValue}>{formatDate(marcacionInfo.fecha_marcacion)}</Text>
+                                </View>
+                                <View style={styles.marcacionInfoItem}>
+                                  <Text style={styles.marcacionInfoLabel}>Hora de Marcación</Text>
+                                  <Text style={styles.marcacionInfoValue}>{formatTime(marcacionInfo.hora_marcacion)}</Text>
+                                </View>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Ubicación */}
+                          <View style={styles.marcacionSection}>
+                            <Text style={styles.marcacionSectionTitle}>Ubicación de Marcación</Text>
+                            <View style={styles.marcacionInfoCard}>
+                              <View style={styles.marcacionInfoSingleColumn}>
+                                <Text style={styles.marcacionInfoLabel}>Aeropuerto</Text>
+                                <Text style={styles.marcacionInfoValueLarge}>
+                                  {marcacionInfo.lugar_marcacion.nombre}
+                                </Text>
+                                <Text style={styles.marcacionInfoValueSubtext}>
+                                  Código: {marcacionInfo.lugar_marcacion.codigo}
+                                </Text>
+                              </View>
+                              <View style={styles.marcacionInfoSingleColumn}>
+                                <Text style={styles.marcacionInfoLabel}>Punto de Control</Text>
+                                <Text style={styles.marcacionInfoValueLarge}>{marcacionInfo.punto_control.descripcion}</Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Dispositivo */}
+                          {marcacionInfo.dispositivo && (
+                            <View style={styles.marcacionSection}>
+                              <Text style={styles.marcacionSectionTitle}>Información del Dispositivo</Text>
+                              <View style={styles.marcacionInfoCard}>
+                                <View style={styles.marcacionInfoRow}>
+                                  <View style={styles.marcacionInfoItem}>
+                                    <Text style={styles.marcacionInfoLabel}>ID del Dispositivo</Text>
+                                    <Text style={styles.marcacionInfoValue}>{marcacionInfo.dispositivo.device_id}</Text>
+                                  </View>
+                                  <View style={styles.marcacionInfoItem}>
+                                    <Text style={styles.marcacionInfoLabel}>Número de Serie</Text>
+                                    <Text style={styles.marcacionInfoValue}>{marcacionInfo.dispositivo.device_sn}</Text>
+                                  </View>
+                                </View>
+                              </View>
+                            </View>
+                          )}
+
+                        </>
+                      )}
+
+                      {/* Información adicional para pendientes */}
+                      {isPending && (
+                        <View style={styles.marcacionSection}>
+                          <Text style={styles.marcacionSectionTitle}>Estado de la Planificación</Text>
+                          <View style={styles.pendingInfoCard}>
+                            <View style={styles.pendingInfoContent}>
+                              <Ionicons name="information-circle" size={24} color={colors.warning} />
+                              <Text style={styles.pendingInfoText}>
+                                Esta planificación aún no ha sido procesada. Una vez que se complete la marcación, 
+                                podrás ver información detallada sobre el aeropuerto, punto de control y dispositivo utilizado.
+                              </Text>
+                            </View>
+                          </View>
+                          
+                          <View style={styles.pendingNextStepsCard}>
+                            <Text style={styles.pendingNextStepsTitle}>Próximos pasos:</Text>
+                            <Text style={styles.pendingNextStepItem}>• Dirígete al aeropuerto en la fecha programada</Text>
+                            <Text style={styles.pendingNextStepItem}>• Realiza la marcación en el punto de control asignado</Text>
+                            <Text style={styles.pendingNextStepItem}>• La información se actualizará automáticamente</Text>
+                          </View>
+                        </View>
+                      )}
+
+                    </ScrollView>
+                  );
+                } else {
+                  return (
+                    <View style={styles.marcacionEmptyContainer}>
+                      <Ionicons name="information-circle-outline" size={48} color={colors.gray[400]} />
+                      <Text style={styles.marcacionEmptyText}>No hay información disponible</Text>
                     </View>
-                  </View>
-                )}
-
-
-                  </ScrollView>
-                );
-              } else {
-                
-                return (
-                  <View style={styles.marcacionEmptyContainer}>
-                    <Ionicons name="information-circle-outline" size={48} color={colors.gray[400]} />
-                    <Text style={styles.marcacionEmptyText}>No hay información disponible</Text>
-                  </View>
-                );
-              }
-            })()}
+                  );
+                }
+              })()}
+            </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -743,16 +844,28 @@ const styles = StyleSheet.create({
   marcacionModalContainer: {
     backgroundColor: colors.white,
     borderRadius: 16,
-    padding: 20,
-    width: '90%',
+    width: '95%',
+    maxWidth: 500,
     maxHeight: '85%',
-    minHeight: 300,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    height: '100%',
+    maxHeight: '100%',
   },
   marcacionModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
   },
   marcacionHeaderInfo: {
     flexDirection: 'row',
@@ -765,47 +878,75 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   modalCloseButton: {
-    padding: 10,
+    padding: 8,
   },
   marcacionModalContent: {
-    maxHeight: 400,
+    flex: 1,
+    paddingTop: 8,
+  },
+  marcacionScrollContent: {
+    paddingBottom: 30,
+    flexGrow: 1,
   },
   marcacionSection: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   marcacionSectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.dark,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   marcacionInfoCard: {
-    backgroundColor: colors.gray[100],
-    borderRadius: 10,
-    padding: 10,
+    backgroundColor: colors.gray[50],
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
   },
   marcacionInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   marcacionInfoItem: {
     flex: 1,
+    marginRight: 8,
   },
   marcacionInfoLabel: {
-    fontSize: 14,
-    color: colors.gray[600],
+    fontSize: 12,
+    color: colors.gray[500],
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
   },
   marcacionInfoValue: {
     fontSize: 14,
-    color: colors.gray[600],
+    color: colors.dark,
     fontWeight: '600',
+  },
+  marcacionInfoValueLarge: {
+    fontSize: 16,
+    color: colors.dark,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  marcacionInfoValueSubtext: {
+    fontSize: 12,
+    color: colors.gray[600],
+    fontStyle: 'italic',
   },
   marcacionInfoSingle: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  marcacionInfoSingleColumn: {
+    flexDirection: 'column',
+    marginBottom: 16,
   },
   marcacionStatusContainer: {
     flexDirection: 'row',
@@ -823,22 +964,198 @@ const styles = StyleSheet.create({
   marcacionLoadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
+    padding: 60,
   },
   marcacionLoadingText: {
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 16,
     color: colors.gray[600],
   },
   marcacionEmptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
+    padding: 60,
   },
   marcacionEmptyText: {
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 16,
     color: colors.gray[600],
     textAlign: 'center',
+  },
+  pendingCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.warning,
+  },
+  processedCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.success,
+  },
+  pendingCardContent: {
+    padding: 16,
+  },
+  pendingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  pendingFlightInfo: {
+    flex: 1,
+  },
+  pendingFlightNumber: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.dark,
+  },
+  pendingPosition: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginTop: 2,
+  },
+  pendingStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  pendingStatusText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  pendingDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: colors.gray[50],
+    borderRadius: 12,
+    padding: 12,
+  },
+  pendingDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  pendingDetailIcon: {
+    marginRight: 8,
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    padding: 6,
+  },
+  pendingDetailContent: {
+    flex: 1,
+  },
+  pendingDetailLabel: {
+    fontSize: 12,
+    color: colors.gray[500],
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  pendingDetailValue: {
+    fontSize: 16,
+    color: colors.dark,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  pendingDetailSeparator: {
+    width: 1,
+    height: 30,
+    backgroundColor: colors.gray[300],
+    marginHorizontal: 12,
+  },
+  pendingObservations: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+  },
+  pendingObservationsText: {
+    fontSize: 14,
+    color: colors.gray[600],
+    marginLeft: 6,
+    flex: 1,
+    lineHeight: 20,
+  },
+  pendingStatusBadgeModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pendingInfoCard: {
+    backgroundColor: colors.warning + '10',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.warning,
+    marginBottom: 16,
+  },
+  pendingInfoContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  pendingInfoText: {
+    fontSize: 14,
+    color: colors.gray[700],
+    marginLeft: 12,
+    flex: 1,
+    lineHeight: 20,
+  },
+  pendingNextStepsCard: {
+    backgroundColor: colors.primary + '08',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+  },
+  pendingNextStepsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.dark,
+    marginBottom: 8,
+  },
+  pendingNextStepItem: {
+    fontSize: 13,
+    color: colors.gray[700],
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  processedSummaryCard: {
+    backgroundColor: colors.success + '08',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.success,
+  },
+  processedSummaryContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  processedSummaryText: {
+    fontSize: 14,
+    color: colors.gray[700],
+    marginLeft: 12,
+    flex: 1,
+    lineHeight: 20,
   },
 });

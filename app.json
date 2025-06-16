@@ -2,7 +2,7 @@
   "expo": {
     "name": "CrewManager",
     "slug": "CrewManager",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/original/airport-tower-with-crew-badge-original-1024x1024.png",
     "userInterfaceStyle": "light",
